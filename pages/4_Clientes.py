@@ -11,8 +11,18 @@ from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
 from components.searchbar import searchbar
 from components.section import section_title, small_section
+from components.item_results import carregar_resultados_cliente
 from components.auth import require_login
 from database import conectar, inicializar_banco
+
+
+def moeda(valor):
+    valor = valor if valor is not None else 0
+    return f"R$ {valor:.2f}".replace(".", ",")
+
+
+def moeda_md(valor):
+    return moeda(valor).replace("$", "\\$")
 
 
 def garantir_tabela_clientes():
@@ -366,6 +376,55 @@ def mobile_form_step(titulo, subtitulo):
         st.markdown(html, unsafe_allow_html=True)
 
 
+def exibir_resultados_cliente(cliente_id):
+    resultados = carregar_resultados_cliente(cliente_id)
+
+    small_section("Resultados do cliente")
+
+    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+
+    with col_r1:
+        kpi_card("Pedidos", str(resultados["pedidos_total"]), "pedidos vinculados", "blue")
+
+    with col_r2:
+        kpi_card("Em aberto", str(resultados["pedidos_abertos"]), "aguardando ação", "orange")
+
+    with col_r3:
+        kpi_card("Faturamento", moeda(resultados["faturamento"]), "pedidos não cancelados", "green")
+
+    with col_r4:
+        kpi_card("Lucro", moeda(resultados["lucro"]), "estimado", "green" if resultados["lucro"] >= 0 else "red")
+
+    col_r5, col_r6 = st.columns(2)
+
+    with col_r5:
+        st.write(f"**Quantidade total vendida:** {resultados['quantidade_total']:.0f} un.")
+
+    with col_r6:
+        st.write(f"**Ticket médio:** {moeda(resultados['ticket_medio'])}")
+
+    small_section("Pedidos deste cliente")
+
+    if resultados["pedidos"]:
+        for pedido in resultados["pedidos"][:8]:
+            total_fmt = moeda_md(pedido["total"])
+            lucro_fmt = moeda_md(pedido["lucro"])
+
+            st.write(
+                f"- **{pedido['codigo']}** | "
+                f"{pedido['peca_codigo']} - {pedido['peca_nome']} | "
+                f"{pedido['quantidade']:.0f} un | "
+                f"{pedido['status']} | "
+                f"{total_fmt} | "
+                f"Lucro: {lucro_fmt}"
+            )
+
+        if len(resultados["pedidos"]) > 8:
+            st.caption(f"Mostrando os 8 pedidos mais recentes de {len(resultados['pedidos'])} pedidos vinculados.")
+    else:
+        st.caption("Este cliente ainda não possui pedidos vinculados.")
+
+
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -657,10 +716,7 @@ for c in clientes:
             if observacoes:
                 st.write(f"**Observações:** {observacoes}")
 
-            st.caption(
-                "Quando o módulo de Pedidos estiver pronto, esta área mostrará "
-                "histórico de compras, faturamento e peças compradas por este cliente."
-            )
+            exibir_resultados_cliente(cliente_id)
 
             col_btn1, col_btn2, col_btn3 = st.columns(3)
 

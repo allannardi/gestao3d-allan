@@ -4,6 +4,7 @@ from datetime import date
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.desktop_visual import inject_desktop_visual
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -1259,6 +1260,7 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("pedidos")
+inject_desktop_visual()
 pedidos_mobile_css()
 pedidos_resumo_mobile_css()
 pedido_mobile_form_css()

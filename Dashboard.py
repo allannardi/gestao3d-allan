@@ -7,6 +7,8 @@ from datetime import date, datetime
 from database import conectar, inicializar_banco
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.desktop_visual import inject_desktop_visual
+from components.desktop_hero import render_desktop_hero
 from components.header import header
 from components.kpi import kpi_card
 from components.section import section_title
@@ -748,17 +750,27 @@ def coluna_numerica(header):
     ]
 
 
+def status_chip_html(status):
+    cor = cor_status_hex(status)
+    return f"""
+    <span class="g3d-status-text" style="color:{cor};">
+        {escape(str(status))}
+    </span>
+    """
+
+
 def tabela_html(headers, rows, empty_message):
     if not rows:
         return f"""
         <div style="
-            border:1px solid #DEE9EF;
+            border:1px solid rgba(185,205,220,0.78);
             background:#FFFFFF;
-            border-radius:12px;
-            padding:18px;
+            border-radius:18px;
+            padding:20px;
             font-family:'Barlow', system-ui, sans-serif;
             color:#5C6C74;
             font-size:13px;
+            box-shadow:0 12px 28px rgba(10,26,92,0.055);
         ">
             {escape(empty_message)}
         </div>
@@ -773,15 +785,15 @@ def tabela_html(headers, rows, empty_message):
         f"""
         <th style="
             text-align:center;
-            padding:12px 14px;
-            border-bottom:2px solid #DEE9EF;
-            color:#5C6C74;
+            padding:14px 16px;
+            border-bottom:1px solid #D7E4EC;
+            color:#0A1A5C;
             font-weight:800;
-            letter-spacing:1.5px;
-            font-size:11px;
+            letter-spacing:1.7px;
+            font-size:10.5px;
             text-transform:uppercase;
             white-space:nowrap;
-            background:#F4F8FB;
+            background:linear-gradient(180deg, #F7FBFE 0%, #EDF5FA 100%);
             position:sticky;
             top:0;
             z-index:2;
@@ -798,48 +810,50 @@ def tabela_html(headers, rows, empty_message):
         for idx, value in enumerate(row):
             header = headers[idx]
 
+            if header == "Status":
+                cell_value = status_chip_html(value)
+            else:
+                cell_value = escape(str(value))
+
             if coluna_numerica(header):
                 align = "center"
-                weight = "700"
+                weight = "800"
+                color = "#0A1A5C" if header in ["Total", "Faturamento", "Lucro"] else "#1E3137"
             else:
                 align = "left"
-                weight = "800" if idx == 0 else "500"
+                weight = "800" if idx == 0 else "600"
+                color = "#0A1A5C" if idx == 0 else "#1E3137"
 
             tds += f"""
             <td style="
-                padding:11px 14px;
-                border-bottom:1px solid #DEE9EF;
-                color:#1E3137;
+                padding:13px 16px;
+                border-bottom:1px solid #E6EEF3;
+                color:{color};
                 font-weight:{weight};
                 text-align:{align};
                 white-space:nowrap;
                 font-size:13px;
                 vertical-align:middle;
-            ">{escape(str(value))}</td>
+            ">{cell_value}</td>
             """
 
         linhas += f"<tr>{tds}</tr>"
 
     return f"""
     <style>
-        .g3d-table-wrap {{
-            border:1px solid #DEE9EF;
-            border-radius:12px;
-            overflow:auto;
-            background:#FFFFFF;
-            font-family:'Barlow', system-ui, sans-serif;
-            width:100%;
-            max-height:360px;
+        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap');
+
+        .g3d-table-wrap,
+        .g3d-table,
+        .g3d-table th,
+        .g3d-table td {{
+            font-family: 'Barlow', system-ui, sans-serif !important;
         }}
 
-        .g3d-table {{
-            border-collapse:collapse;
-            min-width:100%;
-            table-layout:fixed;
-        }}
-
-        .g3d-table tbody tr:hover {{
-            background:#F4F8FB;
+        .g3d-status-text {{
+            font-family: 'Barlow', system-ui, sans-serif !important;
+            font-weight: 800;
+            white-space: nowrap;
         }}
     </style>
 
@@ -866,6 +880,164 @@ def render_tabela(headers, rows, empty_message):
         altura = 90
     else:
         altura = min(430, 82 + (len(rows) * 44))
+
+    st.components.v1.html(
+        html,
+        height=altura,
+        scrolling=True
+    )
+
+
+def render_ranking_pecas_faturamento(pecas_resumo):
+    pecas_ranking = sorted(
+        pecas_resumo.items(),
+        key=lambda item: item[1]["faturamento"],
+        reverse=True
+    )[:8]
+
+    if not pecas_ranking:
+        st.caption("Nenhuma peça vendida ainda.")
+        return
+
+    max_faturamento = max([dados["faturamento"] for _, dados in pecas_ranking], default=1)
+    if max_faturamento <= 0:
+        max_faturamento = 1
+
+    cards = ""
+
+    for posicao, (nome, dados) in enumerate(pecas_ranking, start=1):
+        faturamento = dados["faturamento"]
+        quantidade = dados["quantidade"]
+        lucro = dados["lucro"]
+        largura = max(6, int((faturamento / max_faturamento) * 100))
+        tooltip = (
+            f"Faturamento: {moeda(faturamento)} | "
+            f"Quantidade: {quantidade:.0f} un | "
+            f"Lucro: {moeda(lucro)}"
+        )
+
+        cards += f"""
+        <div class="g3d-rank-row" title="{escape(tooltip)}">
+            <div class="g3d-rank-top">
+                <div class="g3d-rank-name">
+                    <span>{posicao}</span>
+                    <strong>{escape(nome_curto(nome, 46))}</strong>
+                </div>
+                <div class="g3d-rank-value">{escape(moeda(faturamento))}</div>
+            </div>
+            <div class="g3d-rank-meta">
+                <span>{quantidade:.0f} un vendidas</span>
+                <span>Lucro {escape(moeda(lucro))}</span>
+            </div>
+            <div class="g3d-rank-bar">
+                <i style="width:{largura}%;"></i>
+            </div>
+        </div>
+        """
+
+    html = f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap');
+
+        .g3d-rank-wrap {{
+            font-family: 'Barlow', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #FFFFFF;
+            border: 1px solid rgba(185, 205, 220, 0.78);
+            border-radius: 20px;
+            padding: 14px;
+            box-shadow: 0 14px 32px rgba(10, 26, 92, 0.065);
+        }}
+
+        .g3d-rank-row {{
+            border: 1px solid #E6EEF3;
+            border-radius: 16px;
+            padding: 12px 13px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFE 100%);
+        }}
+
+        .g3d-rank-row:hover {{
+            background: #F7FBFE;
+        }}
+
+        .g3d-rank-top {{
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: center;
+            margin-bottom: 7px;
+        }}
+
+        .g3d-rank-name {{
+            display: flex;
+            gap: 9px;
+            align-items: center;
+            min-width: 0;
+        }}
+
+        .g3d-rank-name span {{
+            width: 25px;
+            height: 25px;
+            border-radius: 999px;
+            background: #EDF5FA;
+            color: #0C65AA;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 800;
+            flex: 0 0 auto;
+        }}
+
+        .g3d-rank-name strong {{
+            color: #0A1A5C;
+            font-size: 13px;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .g3d-rank-value {{
+            color: #1F8A4C;
+            font-size: 14px;
+            font-weight: 800;
+            white-space: nowrap;
+        }}
+
+        .g3d-rank-meta {{
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: #5C6C74;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }}
+
+        .g3d-rank-bar {{
+            height: 9px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: #EDF5FA;
+        }}
+
+        .g3d-rank-bar i {{
+            display: block;
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #0C65AA 0%, #58C3F0 100%);
+        }}
+    </style>
+
+    <div class="g3d-rank-wrap">
+        {cards}
+    </div>
+    """
+
+    altura = min(520, 38 + len(pecas_ranking) * 82)
 
     st.components.v1.html(
         html,
@@ -1508,8 +1680,9 @@ ticket_medio = faturamento_total / len(pedidos) if len(pedidos) > 0 else 0
 sidebar()
 
 mobile_bottom_nav("dashboard")
+inject_desktop_visual()
 header(
-    "Dashboard",
+    "Início",
     "Visão geral da operação"
 )
 
@@ -1533,72 +1706,17 @@ with st.container(key="dashboard_mobile"):
 
 with st.container(key="dashboard_desktop"):
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    with col1:
-        kpi_card(
-            "Pedidos em aberto",
-            str(pedidos_abertos),
-            "pedidos aguardando ação",
-            "blue"
-        )
-
-    with col2:
-        kpi_card(
-            "Faturamento",
-            moeda(faturamento_total),
-            "pedidos não cancelados",
-            "green"
-        )
-
-    with col3:
-        kpi_card(
-            "Lucro",
-            moeda(lucro_total),
-            f"margem {margem_media:.0f}%",
-            "green" if lucro_total >= 0 else "red"
-        )
-
-    with col4:
-        kpi_card(
-            "Horas impressas",
-            f"{horas_total:.1f}h",
-            "tempo estimado vendido",
-            "orange"
-        )
-
-    with col5:
-        kpi_card(
-            "Lucro/Hora",
-            f"R$ {lucro_hora:.2f}".replace(".", ","),
-            f"meta: {moeda(meta_lucro)}/h",
-            "green" if lucro_hora >= meta_lucro else "gray"
-        )
-
-
-    section_title(
-        "Resumo da operação",
-        "Indicadores comerciais calculados a partir dos pedidos cadastrados"
+    render_desktop_hero(
+        label="Resumo executivo",
+        value=moeda(faturamento_mes),
+        subtitle=f"{pedidos_fechados_mes:.0f} pedidos fechados no mês · lucro estimado {moeda(lucro_total)}",
+        items=[
+            {"label": "Pedidos abertos", "value": pedidos_abertos},
+            {"label": "Faturamento geral", "value": moeda(faturamento_total)},
+            {"label": "Peças vendidas", "value": f"{quantidade_total:.0f} un"},
+            {"label": "Lucro geral", "value": moeda(lucro_total), "note": f"(margem {margem_media:.0f}%)"},
+        ],
     )
-
-
-    col_a, col_b, col_c, col_d, col_e = st.columns(5)
-
-    with col_a:
-        kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
-
-    with col_b:
-        kpi_card("Peças", str(total_pecas), "modelos cadastrados", "orange")
-
-    with col_c:
-        kpi_card("Filamentos", str(total_filamentos), "rolos cadastrados", "gray")
-
-    with col_d:
-        kpi_card("Ticket médio", moeda(ticket_medio), "por pedido cadastrado", "green")
-
-    with col_e:
-        kpi_card("Fechados no mês", str(pedidos_fechados_mes), f"fat. mês {moeda(faturamento_mes)}", "green")
-
 
     section_title(
         "Pedidos recentes",
@@ -1616,18 +1734,10 @@ with st.container(key="dashboard_desktop"):
 
     with col_r1:
         section_title(
-            "Peças mais vendidas",
-            "Ranking por quantidade vendida"
+            "Peças com maior faturamento",
+            "Ranking por faturamento; passe o mouse para ver faturamento e quantidade"
         )
-        pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:8]
-        if pecas_ranking:
-            df_pecas = pd.DataFrame({
-                "Peça": [nome for nome, _ in pecas_ranking],
-                "Quantidade": [dados["quantidade"] for _, dados in pecas_ranking],
-            }).set_index("Peça")
-            st.bar_chart(df_pecas, height=320)
-        else:
-            st.caption("Nenhuma peça vendida ainda.")
+        render_ranking_pecas_faturamento(pecas_resumo)
 
     with col_r2:
         section_title(

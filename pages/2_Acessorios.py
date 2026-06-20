@@ -2,6 +2,7 @@ import streamlit as st
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
@@ -164,6 +165,7 @@ inicializar_banco()
 
 sidebar()
 mobile_bottom_nav("mais")
+inject_desktop_visual()
 mobile_summary_css("acessorios")
 header("Acessórios", "Cadastro e controle dos itens adicionais")
 

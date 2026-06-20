@@ -3,6 +3,7 @@ import streamlit as st
 from database import inicializar_banco
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css
 from components.header import header
 from components.section import section_title
@@ -94,6 +95,7 @@ inicializar_banco()
 
 sidebar()
 mobile_bottom_nav("mais")
+inject_desktop_visual()
 mobile_summary_css("mais")
 mais_css()
 

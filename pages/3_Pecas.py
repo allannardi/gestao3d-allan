@@ -1,4 +1,5 @@
 import streamlit as st
+from html import escape
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
@@ -764,6 +765,234 @@ def editar_peca_modal(peca_id_edit):
             st.rerun()
 
 
+def peca_mobile_form_css():
+    st.markdown(
+        """
+        <style>
+            .g3d-mobile-form-step,
+            .st-key-nova_peca_resumo_mobile {
+                display: none;
+            }
+
+            @media (min-width: 769px) {
+                .st-key-nova_peca_resumo_mobile {
+                    display: none !important;
+                }
+
+                .st-key-nova_peca_resumo_desktop {
+                    display: block !important;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .g3d-mobile-form-step {
+                    display: block !important;
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-left: 4px solid #0C65AA;
+                    border-radius: 16px;
+                    padding: 12px 13px;
+                    margin: 16px 0 10px 0;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-mobile-form-step strong {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #100690;
+                    text-transform: uppercase;
+                    letter-spacing: 1.8px;
+                    margin-bottom: 5px;
+                    line-height: 1.1;
+                }
+
+                .g3d-mobile-form-step span {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.28;
+                }
+
+                .st-key-nova_peca_resumo_desktop {
+                    display: none !important;
+                }
+
+                .st-key-nova_peca_resumo_mobile {
+                    display: block !important;
+                }
+
+                .g3d-nova-peca-resumo {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 58%, #58C3F0 100%);
+                    border-radius: 22px;
+                    padding: 16px 16px;
+                    color: #FFFFFF;
+                    box-shadow: 0 14px 34px rgba(10, 26, 92, 0.18);
+                    margin: 14px 0 16px 0;
+                    overflow: hidden;
+                    position: relative;
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-nova-peca-resumo:after {
+                    content: "";
+                    width: 118px;
+                    height: 118px;
+                    border-radius: 50%;
+                    background: rgba(255,255,255,0.12);
+                    position: absolute;
+                    right: -40px;
+                    top: -52px;
+                }
+
+                .g3d-nova-peca-label {
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.86;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-nova-peca-total {
+                    font-size: 31px;
+                    font-weight: 800;
+                    line-height: 1;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-nova-peca-sub {
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.92;
+                    line-height: 1.25;
+                }
+
+                .g3d-nova-peca-mini-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin-top: 12px;
+                }
+
+                .g3d-nova-peca-mini {
+                    background: rgba(255,255,255,0.14);
+                    border: 1px solid rgba(255,255,255,0.20);
+                    border-radius: 15px;
+                    padding: 10px 10px;
+                }
+
+                .g3d-nova-peca-mini strong {
+                    display: block;
+                    font-size: 15px;
+                    font-weight: 800;
+                    line-height: 1.05;
+                    color: #FFFFFF;
+                    margin-bottom: 5px;
+                }
+
+                .g3d-nova-peca-mini span {
+                    display: block;
+                    font-size: 10px;
+                    font-weight: 700;
+                    opacity: 0.88;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+
+                div[data-testid="stSelectbox"],
+                div[data-testid="stNumberInput"],
+                div[data-testid="stTextInput"],
+                div[data-testid="stTextArea"],
+                div[data-testid="stCheckbox"] {
+                    margin-bottom: 0.45rem !important;
+                }
+
+                div[data-testid="stSelectbox"] label,
+                div[data-testid="stNumberInput"] label,
+                div[data-testid="stTextInput"] label,
+                div[data-testid="stTextArea"] label,
+                div[data-testid="stCheckbox"] label {
+                    color: #1E3137 !important;
+                    font-weight: 700 !important;
+                    font-family: 'Barlow', system-ui, sans-serif !important;
+                }
+
+                .st-key-salvar_nova_peca button {
+                    background: #0C65AA !important;
+                    color: #FFFFFF !important;
+                    border-color: #0C65AA !important;
+                    min-height: 52px !important;
+                    border-radius: 16px !important;
+                    font-size: 15px !important;
+                    font-weight: 800 !important;
+                    box-shadow: 0 10px 26px rgba(12, 101, 170, 0.22) !important;
+                    margin-top: 8px !important;
+                }
+
+                .st-key-salvar_nova_peca button:before {
+                    content: "✓ ";
+                    font-weight: 800;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def mobile_form_step(titulo, subtitulo):
+    html = f"""
+    <div class="g3d-mobile-form-step">
+        <strong>{escape(str(titulo))}</strong>
+        <span>{escape(str(subtitulo))}</span>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
+def render_nova_peca_mobile_resumo(custos):
+    html = f"""
+    <div class="g3d-nova-peca-resumo">
+        <div class="g3d-nova-peca-label">Resumo da peça</div>
+        <div class="g3d-nova-peca-total">{escape(moeda(custos["preco_unitario"]))}</div>
+        <div class="g3d-nova-peca-sub">
+            preço unitário sugerido · lucro/hora {escape(f"R$ {custos['lucro_hora']:.2f}/h".replace(".", ","))}
+        </div>
+
+        <div class="g3d-nova-peca-mini-grid">
+            <div class="g3d-nova-peca-mini">
+                <strong>{escape(moeda(custos["custo_unitario"]))}</strong>
+                <span>Custo unit.</span>
+            </div>
+            <div class="g3d-nova-peca-mini">
+                <strong>{escape(moeda(custos["preco"]))}</strong>
+                <span>Preço lote</span>
+            </div>
+            <div class="g3d-nova-peca-mini">
+                <strong>{escape(f"{custos['peso_unitario']:.1f} g")}</strong>
+                <span>Peso unit.</span>
+            </div>
+            <div class="g3d-nova-peca-mini">
+                <strong>{escape(moeda(custos["lucro_unitario"]))}</strong>
+                <span>Lucro unit.</span>
+            </div>
+        </div>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -772,6 +1001,7 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("pecas")
+peca_mobile_form_css()
 mobile_summary_css("pecas")
 header("Peças", "Biblioteca de modelos e cálculo de rentabilidade")
 
@@ -959,6 +1189,8 @@ if st.session_state["mostrar_form_peca"]:
 
         with col_form:
 
+            mobile_form_step("1. Identificação", "Informe nome, categoria e quantidade produzida no lote.")
+
             nome = st.text_input("Nome da Peça", key="nova_peca_nome")
 
             opcoes_categoria = (categorias_pecas if categorias_pecas else ["Outro"]) + ["+ Adicionar nova categoria"]
@@ -986,6 +1218,8 @@ if st.session_state["mostrar_form_peca"]:
                 key="nova_peca_quantidade"
             )
 
+            mobile_form_step("2. Filamentos e cores", "Cadastre as cores e o peso de cada filamento usado no lote.")
+
             small_section("Filamentos e cores do lote")
             st.caption("Informe o peso total de cada cor/material usado no lote completo.")
 
@@ -1006,6 +1240,8 @@ if st.session_state["mostrar_form_peca"]:
                 if filamentos_lote
                 else filamentos[0][0]
             )
+
+            mobile_form_step("3. Produção e embalagem", "Informe tempo total de impressão, pós-processamento e embalagem.")
 
             tempo_impressao_h = st.number_input(
                 "Tempo total de impressão do lote (horas)",
@@ -1031,6 +1267,8 @@ if st.session_state["mostrar_form_peca"]:
                 key="nova_peca_embalagem"
             )
 
+            mobile_form_step("4. Acessórios", "Inclua argolas, embalagens, imãs ou outros itens usados no lote.")
+
             small_section("Acessórios do lote")
             st.caption("Informe a quantidade total de acessórios usados no lote completo.")
 
@@ -1052,6 +1290,8 @@ if st.session_state["mostrar_form_peca"]:
                     )
 
                     acessorios_selecionados.append((a[0], a[3], qtd))
+
+            mobile_form_step("5. Arquivos e observações", "Salve links, arquivos e informações úteis para produção.")
 
             small_section("Arquivos e links")
 
@@ -1076,24 +1316,28 @@ if st.session_state["mostrar_form_peca"]:
 
         with col_resumo:
 
-            small_section("Resumo do lote")
+            with st.container(key="nova_peca_resumo_mobile"):
+                render_nova_peca_mobile_resumo(custos)
 
-            kpi_card("Quantidade", str(custos["quantidade"]), "unidades no lote", "blue")
-            kpi_card("Custo lote", moeda(custos["total"]), "custo total", "orange")
-            kpi_card("Preço lote", moeda(custos["preco"]), "sugerido total", "green")
-            kpi_card(
-                "Lucro/Hora",
-                f"R$ {custos['lucro_hora']:.2f}/h".replace(".", ","),
-                custos["status"],
-                custos["cor"]
-            )
+            with st.container(key="nova_peca_resumo_desktop"):
+                small_section("Resumo do lote")
 
-            small_section("Resumo unitário")
+                kpi_card("Quantidade", str(custos["quantidade"]), "unidades no lote", "blue")
+                kpi_card("Custo lote", moeda(custos["total"]), "custo total", "orange")
+                kpi_card("Preço lote", moeda(custos["preco"]), "sugerido total", "green")
+                kpi_card(
+                    "Lucro/Hora",
+                    f"R$ {custos['lucro_hora']:.2f}/h".replace(".", ","),
+                    custos["status"],
+                    custos["cor"]
+                )
 
-            kpi_card("Peso unitário", f"{custos['peso_unitario']:.1f} g", "por peça", "gray")
-            kpi_card("Custo unitário", moeda(custos["custo_unitario"]), "por peça", "orange")
-            kpi_card("Preço unitário", moeda(custos["preco_unitario"]), "sugerido por peça", "green")
-            kpi_card("Lucro unitário", moeda(custos["lucro_unitario"]), "por peça", custos["cor"])
+                small_section("Resumo unitário")
+
+                kpi_card("Peso unitário", f"{custos['peso_unitario']:.1f} g", "por peça", "gray")
+                kpi_card("Custo unitário", moeda(custos["custo_unitario"]), "por peça", "orange")
+                kpi_card("Preço unitário", moeda(custos["preco_unitario"]), "sugerido por peça", "green")
+                kpi_card("Lucro unitário", moeda(custos["lucro_unitario"]), "por peça", custos["cor"])
 
         if primary_button("Salvar Peça", "salvar_nova_peca"):
 

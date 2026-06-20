@@ -1,4 +1,5 @@
 import streamlit as st
+from html import escape
 from datetime import date
 
 from components.sidebar import sidebar
@@ -175,6 +176,8 @@ def editar_cliente_modal(cliente_id):
             value=cliente[5] if cliente[5] else ""
         )
 
+        mobile_form_step("2. Contato e localização", "Preencha WhatsApp, e-mail, cidade, estado e origem.")
+
         col_form1, col_form2 = st.columns(2)
 
         with col_form1:
@@ -271,6 +274,98 @@ def editar_cliente_modal(cliente_id):
             st.rerun()
 
 
+def cliente_mobile_form_css():
+    st.markdown(
+        """
+        <style>
+            .g3d-mobile-form-step {
+                display: none;
+            }
+
+            @media (max-width: 768px) {
+                .g3d-mobile-form-step {
+                    display: block !important;
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-left: 4px solid #0C65AA;
+                    border-radius: 16px;
+                    padding: 12px 13px;
+                    margin: 16px 0 10px 0;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-mobile-form-step strong {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #100690;
+                    text-transform: uppercase;
+                    letter-spacing: 1.8px;
+                    margin-bottom: 5px;
+                    line-height: 1.1;
+                }
+
+                .g3d-mobile-form-step span {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.28;
+                }
+
+                div[data-testid="stTextInput"],
+                div[data-testid="stSelectbox"],
+                div[data-testid="stTextArea"] {
+                    margin-bottom: 0.45rem !important;
+                }
+
+                div[data-testid="stTextInput"] label,
+                div[data-testid="stSelectbox"] label,
+                div[data-testid="stTextArea"] label {
+                    color: #1E3137 !important;
+                    font-weight: 700 !important;
+                    font-family: 'Barlow', system-ui, sans-serif !important;
+                }
+
+                .stFormSubmitButton button {
+                    background: #0C65AA !important;
+                    color: #FFFFFF !important;
+                    border-color: #0C65AA !important;
+                    min-height: 52px !important;
+                    border-radius: 16px !important;
+                    font-size: 15px !important;
+                    font-weight: 800 !important;
+                    box-shadow: 0 10px 26px rgba(12, 101, 170, 0.22) !important;
+                    margin-top: 8px !important;
+                    width: 100% !important;
+                }
+
+                .stFormSubmitButton button:before {
+                    content: "✓ ";
+                    font-weight: 800;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def mobile_form_step(titulo, subtitulo):
+    html = f"""
+    <div class="g3d-mobile-form-step">
+        <strong>{escape(str(titulo))}</strong>
+        <span>{escape(str(subtitulo))}</span>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -361,6 +456,8 @@ if st.session_state["mostrar_form_cliente"]:
 
     with st.form("novo_cliente"):
 
+        mobile_form_step("1. Dados principais", "Informe nome, tipo e documento do cliente.")
+
         nome = st.text_input("Nome do Cliente")
 
         tipo = st.selectbox(
@@ -369,6 +466,8 @@ if st.session_state["mostrar_form_cliente"]:
         )
 
         documento = st.text_input("CPF / CNPJ")
+
+        mobile_form_step("2. Contato e localização", "Preencha WhatsApp, e-mail, cidade, estado e origem.")
 
         col_form1, col_form2 = st.columns(2)
 
@@ -392,6 +491,8 @@ if st.session_state["mostrar_form_cliente"]:
                     "Outro"
                 ]
             )
+
+        mobile_form_step("3. Observações", "Registre informações importantes para atendimento futuro.")
 
         observacoes = st.text_area("Observações")
 

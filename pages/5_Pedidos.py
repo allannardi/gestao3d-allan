@@ -1023,6 +1023,234 @@ def render_pedidos_mobile_resumo(total_pedidos, pedidos_abertos, faturamento_tot
         st.markdown(html, unsafe_allow_html=True)
 
 
+def pedido_mobile_form_css():
+    st.markdown(
+        """
+        <style>
+            .g3d-pedido-mobile-step,
+            .st-key-novo_pedido_resumo_mobile {
+                display: none;
+            }
+
+            @media (min-width: 769px) {
+                .st-key-novo_pedido_resumo_mobile {
+                    display: none !important;
+                }
+
+                .st-key-novo_pedido_resumo_desktop {
+                    display: block !important;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .g3d-pedido-mobile-step {
+                    display: block !important;
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-left: 4px solid #0C65AA;
+                    border-radius: 16px;
+                    padding: 12px 13px;
+                    margin: 16px 0 10px 0;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-pedido-mobile-step strong {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #100690;
+                    text-transform: uppercase;
+                    letter-spacing: 1.8px;
+                    margin-bottom: 5px;
+                    line-height: 1.1;
+                }
+
+                .g3d-pedido-mobile-step span {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.28;
+                }
+
+                .st-key-novo_pedido_resumo_desktop {
+                    display: none !important;
+                }
+
+                .st-key-novo_pedido_resumo_mobile {
+                    display: block !important;
+                }
+
+                .g3d-novo-pedido-resumo {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 58%, #58C3F0 100%);
+                    border-radius: 22px;
+                    padding: 16px 16px;
+                    color: #FFFFFF;
+                    box-shadow: 0 14px 34px rgba(10, 26, 92, 0.18);
+                    margin: 14px 0 16px 0;
+                    overflow: hidden;
+                    position: relative;
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-novo-pedido-resumo:after {
+                    content: "";
+                    width: 118px;
+                    height: 118px;
+                    border-radius: 50%;
+                    background: rgba(255,255,255,0.12);
+                    position: absolute;
+                    right: -40px;
+                    top: -52px;
+                }
+
+                .g3d-novo-pedido-resumo-label {
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.86;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-novo-pedido-resumo-total {
+                    font-size: 31px;
+                    font-weight: 800;
+                    line-height: 1;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-novo-pedido-resumo-sub {
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.92;
+                    line-height: 1.25;
+                }
+
+                .g3d-novo-pedido-mini-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin-top: 12px;
+                }
+
+                .g3d-novo-pedido-mini {
+                    background: rgba(255,255,255,0.14);
+                    border: 1px solid rgba(255,255,255,0.20);
+                    border-radius: 15px;
+                    padding: 10px 10px;
+                }
+
+                .g3d-novo-pedido-mini strong {
+                    display: block;
+                    font-size: 15px;
+                    font-weight: 800;
+                    line-height: 1.05;
+                    color: #FFFFFF;
+                    margin-bottom: 5px;
+                }
+
+                .g3d-novo-pedido-mini span {
+                    display: block;
+                    font-size: 10px;
+                    font-weight: 700;
+                    opacity: 0.88;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+
+                div[data-testid="stSelectbox"],
+                div[data-testid="stNumberInput"],
+                div[data-testid="stDateInput"],
+                div[data-testid="stTextInput"],
+                div[data-testid="stTextArea"] {
+                    margin-bottom: 0.45rem !important;
+                }
+
+                div[data-testid="stSelectbox"] label,
+                div[data-testid="stNumberInput"] label,
+                div[data-testid="stDateInput"] label,
+                div[data-testid="stTextInput"] label,
+                div[data-testid="stTextArea"] label {
+                    color: #1E3137 !important;
+                    font-weight: 700 !important;
+                    font-family: 'Barlow', system-ui, sans-serif !important;
+                }
+
+                .st-key-salvar_novo_pedido button {
+                    background: #0C65AA !important;
+                    color: #FFFFFF !important;
+                    border-color: #0C65AA !important;
+                    min-height: 52px !important;
+                    border-radius: 16px !important;
+                    font-size: 15px !important;
+                    font-weight: 800 !important;
+                    box-shadow: 0 10px 26px rgba(12, 101, 170, 0.22) !important;
+                    margin-top: 8px !important;
+                }
+
+                .st-key-salvar_novo_pedido button:before {
+                    content: "✓ ";
+                    font-weight: 800;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def pedido_mobile_step(titulo, subtitulo):
+    html = f"""
+    <div class="g3d-pedido-mobile-step">
+        <strong>{escape(str(titulo))}</strong>
+        <span>{escape(str(subtitulo))}</span>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
+def render_novo_pedido_mobile_resumo(calc, preco_sugerido, margem_padrao):
+    html = f"""
+    <div class="g3d-novo-pedido-resumo">
+        <div class="g3d-novo-pedido-resumo-label">Resumo do pedido</div>
+        <div class="g3d-novo-pedido-resumo-total">{escape(moeda(calc["total"]))}</div>
+        <div class="g3d-novo-pedido-resumo-sub">
+            lucro estimado {escape(moeda(calc["lucro"]))} · venda sugerida {escape(moeda(preco_sugerido))}
+        </div>
+
+        <div class="g3d-novo-pedido-mini-grid">
+            <div class="g3d-novo-pedido-mini">
+                <strong>{escape(moeda(calc["custo_unitario"]))}</strong>
+                <span>Custo unit.</span>
+            </div>
+            <div class="g3d-novo-pedido-mini">
+                <strong>{escape(moeda(calc["subtotal"]))}</strong>
+                <span>Subtotal</span>
+            </div>
+            <div class="g3d-novo-pedido-mini">
+                <strong>{escape(moeda(calc["lucro_unitario"]))}</strong>
+                <span>Lucro unit.</span>
+            </div>
+            <div class="g3d-novo-pedido-mini">
+                <strong>{calc["lucro_percentual"]:.0f}%</strong>
+                <span>Margem custo</span>
+            </div>
+        </div>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -1033,6 +1261,7 @@ sidebar()
 mobile_bottom_nav("pedidos")
 pedidos_mobile_css()
 pedidos_resumo_mobile_css()
+pedido_mobile_form_css()
 header("Pedidos", "Cadastro e acompanhamento dos pedidos do Ateliê")
 
 
@@ -1144,6 +1373,8 @@ if st.session_state["mostrar_form_pedido"]:
 
         with col_form:
 
+            pedido_mobile_step("1. Cliente", "Selecione um cliente existente ou cadastre rapidamente um novo.")
+
             clientes_opcoes = {f"{c[1]} - {c[2]}": c for c in clientes}
             opcao_novo_cliente = "+ Cadastrar novo cliente"
             cliente_labels = [opcao_novo_cliente] + list(clientes_opcoes.keys())
@@ -1219,6 +1450,8 @@ if st.session_state["mostrar_form_pedido"]:
             else:
                 cliente_dados = clientes_opcoes[cliente_selecionado]
 
+            pedido_mobile_step("2. Peça e preço", "Escolha a peça, revise o valor sugerido e informe a quantidade.")
+
             pecas_opcoes = {f"{p[1]} - {p[2]}": p for p in pecas}
             peca_selecionada = st.selectbox("Peça", list(pecas_opcoes.keys()), key="novo_pedido_peca")
             peca_dados = pecas_opcoes[peca_selecionada]
@@ -1251,6 +1484,8 @@ if st.session_state["mostrar_form_pedido"]:
                 unsafe_allow_html=True
             )
 
+            pedido_mobile_step("3. Valores", "Ajuste quantidade, venda, desconto e frete.")
+
             quantidade = st.number_input("Quantidade vendida", min_value=1.0, value=1.0, step=1.0, key="novo_pedido_quantidade")
             valor_unitario = st.number_input("Valor unitário de venda (R$)", min_value=0.0, step=1.0, key="novo_pedido_valor_unitario")
 
@@ -1261,6 +1496,8 @@ if st.session_state["mostrar_form_pedido"]:
 
             with col_v2:
                 frete = st.number_input("Frete cobrado (R$)", min_value=0.0, value=0.0, step=1.0, key="novo_pedido_frete")
+
+            pedido_mobile_step("4. Acompanhamento", "Defina status, canal, datas e observações.")
 
             col_s1, col_s2 = st.columns(2)
 
@@ -1287,14 +1524,18 @@ if st.session_state["mostrar_form_pedido"]:
 
         with col_resumo:
 
-            small_section("Resumo")
+            with st.container(key="novo_pedido_resumo_mobile"):
+                render_novo_pedido_mobile_resumo(calc, preco_sugerido, margem_padrao)
 
-            kpi_card("Custo unitário", moeda(calc["custo_unitario"]), "referência da peça", "orange")
-            kpi_card("Venda sugerida", moeda(preco_sugerido), f"margem {margem_padrao:.0f}%", "green")
-            kpi_card("Subtotal", moeda(calc["subtotal"]), "quantidade x valor", "blue")
-            kpi_card("Total pedido", moeda(calc["total"]), "com desconto e frete", "green")
-            kpi_card("Lucro", moeda(calc["lucro"]), "estimado no pedido", "green")
-            kpi_card("Lucro unitário", moeda(calc["lucro_unitario"]), f"{calc['lucro_percentual']:.0f}% sobre custo", "gray")
+            with st.container(key="novo_pedido_resumo_desktop"):
+                small_section("Resumo")
+
+                kpi_card("Custo unitário", moeda(calc["custo_unitario"]), "referência da peça", "orange")
+                kpi_card("Venda sugerida", moeda(preco_sugerido), f"margem {margem_padrao:.0f}%", "green")
+                kpi_card("Subtotal", moeda(calc["subtotal"]), "quantidade x valor", "blue")
+                kpi_card("Total pedido", moeda(calc["total"]), "com desconto e frete", "green")
+                kpi_card("Lucro", moeda(calc["lucro"]), "estimado no pedido", "green")
+                kpi_card("Lucro unitário", moeda(calc["lucro_unitario"]), f"{calc['lucro_percentual']:.0f}% sobre custo", "gray")
 
         if primary_button("Salvar Pedido", "salvar_novo_pedido"):
 

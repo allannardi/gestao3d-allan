@@ -26,6 +26,478 @@ with open("assets/style.css") as f:
 
 require_login()
 
+def nome_curto(texto, limite=42):
+    texto = str(texto) if texto is not None else "-"
+    if " - " in texto:
+        texto = texto.split(" - ", 1)[1]
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite - 3] + "..."
+
+
+def mobile_cor(nome):
+    mapa = {
+        "blue": "#0C65AA",
+        "green": "#1F8A4C",
+        "orange": "#B85C20",
+        "red": "#D11A2A",
+        "gray": "#8A8F98",
+        "purple": "#100690",
+    }
+    return mapa.get(nome, "#0C65AA")
+
+
+def mobile_kpi_html(titulo, valor, subtitulo, cor="blue"):
+    cor_hex = mobile_cor(cor)
+    return f"""
+    <div class="g3d-mobile-kpi" style="border-top-color:{cor_hex};">
+        <div class="g3d-mobile-kpi-title">{escape(str(titulo))}</div>
+        <div class="g3d-mobile-kpi-value" style="color:{cor_hex};">{escape(str(valor))}</div>
+        <div class="g3d-mobile-kpi-subtitle">{escape(str(subtitulo))}</div>
+    </div>
+    """
+
+
+def mobile_section_header(titulo, subtitulo=""):
+    return f"""
+    <div class="g3d-mobile-section-title">
+        <div>
+            <span>{escape(str(titulo))}</span>
+            <small>{escape(str(subtitulo))}</small>
+        </div>
+    </div>
+    """
+
+
+def mobile_status_chip(status):
+    cor = cor_status_hex(status)
+    return f"""
+    <span class="g3d-mobile-status-chip" style="background:{cor}18;color:{cor};border-color:{cor}30;">
+        <i style="background:{cor};"></i>{escape(str(status))}
+    </span>
+    """
+
+
+def mobile_dashboard_css():
+    st.markdown(
+        """
+        <style>
+            .st-key-dashboard_mobile {
+                display: none;
+            }
+
+            @media (min-width: 769px) {
+                .st-key-dashboard_desktop {
+                    display: block !important;
+                }
+
+                .st-key-dashboard_mobile {
+                    display: none !important;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .st-key-dashboard_desktop {
+                    display: none !important;
+                }
+
+                .st-key-dashboard_mobile {
+                    display: block !important;
+                }
+
+                .g3d-mobile-dashboard {
+                    font-family: 'Barlow', system-ui, sans-serif;
+                    padding-bottom: 6px;
+                    width: 100%;
+                }
+
+                .g3d-mobile-hero {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 60%, #58C3F0 100%);
+                    border-radius: 22px;
+                    padding: 18px 18px;
+                    color: #FFFFFF;
+                    box-shadow: 0 14px 34px rgba(10, 26, 92, 0.18);
+                    margin: 10px 0 18px 0;
+                    overflow: hidden;
+                    position: relative;
+                }
+
+                .g3d-mobile-hero:after {
+                    content: "";
+                    width: 130px;
+                    height: 130px;
+                    border-radius: 50%;
+                    background: rgba(255,255,255,0.12);
+                    position: absolute;
+                    right: -42px;
+                    top: -52px;
+                }
+
+                .g3d-mobile-hero-label {
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.86;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-hero-value {
+                    font-size: 32px;
+                    font-weight: 800;
+                    line-height: 1;
+                    margin-bottom: 6px;
+                }
+
+                .g3d-mobile-hero-sub {
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.92;
+                }
+
+                .g3d-mobile-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 12px;
+                    margin-bottom: 18px;
+                }
+
+                .g3d-mobile-kpi {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-top: 4px solid #0C65AA;
+                    border-radius: 18px;
+                    padding: 14px 14px 13px 14px;
+                    box-shadow: 0 9px 24px rgba(10, 26, 92, 0.06);
+                    min-height: 114px;
+                }
+
+                .g3d-mobile-kpi-title {
+                    font-size: 9.5px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    color: #5C6C74;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-kpi-value {
+                    font-size: 25px;
+                    font-weight: 800;
+                    line-height: 1.05;
+                    margin-bottom: 7px;
+                }
+
+                .g3d-mobile-kpi-subtitle {
+                    font-size: 11.5px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.22;
+                }
+
+                .g3d-mobile-section-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin: 22px 0 10px 0;
+                    border-left: 4px solid #100690;
+                    padding-left: 10px;
+                }
+
+                .g3d-mobile-section-title span {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2.2px;
+                    color: #100690;
+                    text-transform: uppercase;
+                    line-height: 1.1;
+                }
+
+                .g3d-mobile-section-title small {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    margin-top: 5px;
+                    line-height: 1.25;
+                }
+
+                .g3d-mobile-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+
+                .g3d-mobile-order-card {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 17px;
+                    padding: 13px 14px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.05);
+                }
+
+                .g3d-mobile-order-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-order-code {
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: #0C65AA;
+                    line-height: 1;
+                }
+
+                .g3d-mobile-order-piece {
+                    font-size: 14px;
+                    font-weight: 800;
+                    color: #1E3137;
+                    margin-bottom: 7px;
+                    line-height: 1.2;
+                }
+
+                .g3d-mobile-order-meta {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 10px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #5C6C74;
+                }
+
+                .g3d-mobile-status-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    border: 1px solid;
+                    border-radius: 999px;
+                    padding: 5px 8px;
+                    font-size: 10.5px;
+                    font-weight: 800;
+                    white-space: nowrap;
+                }
+
+                .g3d-mobile-status-chip i {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    display: inline-block;
+                }
+
+                .g3d-mobile-rank-card {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 17px;
+                    padding: 13px 14px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.05);
+                }
+
+                .g3d-mobile-rank-head {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 12px;
+                    align-items: flex-start;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-rank-title {
+                    font-size: 13.5px;
+                    font-weight: 800;
+                    color: #1E3137;
+                    line-height: 1.18;
+                }
+
+                .g3d-mobile-rank-value {
+                    font-size: 15px;
+                    font-weight: 800;
+                    color: #0C65AA;
+                    white-space: nowrap;
+                }
+
+                .g3d-mobile-progress {
+                    width: 100%;
+                    height: 9px;
+                    background: #EDF5FA;
+                    border-radius: 999px;
+                    overflow: hidden;
+                }
+
+                .g3d-mobile-progress span {
+                    display: block;
+                    height: 100%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #0C65AA 0%, #58C3F0 100%);
+                }
+
+                .g3d-mobile-status-row {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 16px;
+                    padding: 12px 13px;
+                    margin-bottom: 8px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                }
+
+                .g3d-mobile-status-row-head {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 8px;
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    color: #1E3137;
+                }
+
+                .g3d-mobile-status-row-head strong {
+                    color: #5C6C74;
+                    font-size: 11.5px;
+                    font-weight: 700;
+                }
+
+                .g3d-mobile-empty {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 16px;
+                    padding: 16px;
+                    font-size: 13px;
+                    color: #5C6C74;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                }
+
+                .g3d-mobile-foot {
+                    margin-top: 20px;
+                    padding: 12px 0 0 0;
+                    border-top: 1px solid rgba(92,108,116,0.16);
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #5C6C74;
+                    line-height: 1.45;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_mobile_dashboard(
+    pedidos_abertos,
+    faturamento_total,
+    lucro_total,
+    margem_media,
+    horas_total,
+    lucro_hora,
+    meta_lucro,
+    pedidos_fechados_mes,
+    faturamento_mes,
+    pedidos_abertos_lista,
+    pecas_resumo,
+    status_resumo,
+):
+    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+    pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:5]
+    max_qtd = max([dados["quantidade"] for _, dados in pecas_ranking], default=1)
+
+    pedidos_cards = ""
+    for item in pedidos_abertos_lista[:5]:
+        codigo, peca, qtd, status, data = item
+        pedidos_cards += f"""
+        <div class="g3d-mobile-order-card">
+            <div class="g3d-mobile-order-top">
+                <div class="g3d-mobile-order-code">{escape(str(codigo))}</div>
+                {mobile_status_chip(status)}
+            </div>
+            <div class="g3d-mobile-order-piece">{escape(nome_curto(peca, 44))}</div>
+            <div class="g3d-mobile-order-meta">
+                <span>Qtd. {escape(str(qtd))}</span>
+                <span>{escape(str(data))}</span>
+            </div>
+        </div>
+        """
+
+    if not pedidos_cards:
+        pedidos_cards = '<div class="g3d-mobile-empty">Nenhum pedido aberto no momento.</div>'
+
+    ranking_cards = ""
+    for nome, dados in pecas_ranking:
+        largura = int((dados["quantidade"] / max_qtd) * 100) if max_qtd else 0
+        ranking_cards += f"""
+        <div class="g3d-mobile-rank-card">
+            <div class="g3d-mobile-rank-head">
+                <div class="g3d-mobile-rank-title">{escape(nome_curto(nome, 46))}</div>
+                <div class="g3d-mobile-rank-value">{dados["quantidade"]:.0f} un.</div>
+            </div>
+            <div class="g3d-mobile-progress"><span style="width:{largura}%;"></span></div>
+        </div>
+        """
+
+    if not ranking_cards:
+        ranking_cards = '<div class="g3d-mobile-empty">Nenhuma peça vendida ainda.</div>'
+
+    total_status = sum(dados["pedidos"] for dados in status_resumo.values())
+    status_cards = ""
+    for status in status_ordem:
+        dados = status_resumo.get(status)
+        if not dados:
+            continue
+        quantidade = dados["pedidos"]
+        percentual = int((quantidade / total_status) * 100) if total_status else 0
+        cor = cor_status_hex(status)
+        status_cards += f"""
+        <div class="g3d-mobile-status-row">
+            <div class="g3d-mobile-status-row-head">
+                <span>{mobile_status_chip(status)}</span>
+                <strong>{quantidade:.0f} · {percentual}%</strong>
+            </div>
+            <div class="g3d-mobile-progress"><span style="width:{percentual}%;background:{cor};"></span></div>
+        </div>
+        """
+
+    if not status_cards:
+        status_cards = '<div class="g3d-mobile-empty">Nenhum pedido cadastrado ainda.</div>'
+
+    html = f"""
+    <div class="g3d-mobile-dashboard">
+        <div class="g3d-mobile-hero">
+            <div class="g3d-mobile-hero-label">Resumo do mês</div>
+            <div class="g3d-mobile-hero-value">{escape(moeda(faturamento_mes))}</div>
+            <div class="g3d-mobile-hero-sub">{pedidos_fechados_mes:.0f} pedidos fechados no mês</div>
+        </div>
+
+        <div class="g3d-mobile-grid">
+            {mobile_kpi_html("Abertos", pedidos_abertos, "pedidos aguardando ação", "blue")}
+            {mobile_kpi_html("Faturamento", moeda(faturamento_total), "pedidos não cancelados", "green")}
+            {mobile_kpi_html("Lucro", moeda(lucro_total), f"margem {margem_media:.0f}%", "green" if lucro_total >= 0 else "red")}
+            {mobile_kpi_html("Lucro/Hora", f"R$ {lucro_hora:.2f}".replace(".", ","), f"meta {moeda(meta_lucro)}/h", "green" if lucro_hora >= meta_lucro else "gray")}
+        </div>
+
+        {mobile_section_header("Pedidos abertos", "O que precisa de atenção agora")}
+        <div class="g3d-mobile-list">{pedidos_cards}</div>
+
+        {mobile_section_header("Peças mais vendidas", "Ranking por quantidade")}
+        <div class="g3d-mobile-list">{ranking_cards}</div>
+
+        {mobile_section_header("Status dos pedidos", "Distribuição atual")}
+        <div>{status_cards}</div>
+
+        <div class="g3d-mobile-foot">
+            Horas vendidas: <strong>{horas_total:.1f}h</strong> ·
+            Faturamento total: <strong>{escape(moeda(faturamento_total))}</strong>
+        </div>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 inicializar_banco()
 
 
@@ -402,6 +874,478 @@ def render_tabela(headers, rows, empty_message):
     )
 
 
+def nome_curto(texto, limite=42):
+    texto = str(texto) if texto is not None else "-"
+    if " - " in texto:
+        texto = texto.split(" - ", 1)[1]
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite - 3] + "..."
+
+
+def mobile_cor(nome):
+    mapa = {
+        "blue": "#0C65AA",
+        "green": "#1F8A4C",
+        "orange": "#B85C20",
+        "red": "#D11A2A",
+        "gray": "#8A8F98",
+        "purple": "#100690",
+    }
+    return mapa.get(nome, "#0C65AA")
+
+
+def mobile_kpi_html(titulo, valor, subtitulo, cor="blue"):
+    cor_hex = mobile_cor(cor)
+    return f"""
+    <div class="g3d-mobile-kpi" style="border-top-color:{cor_hex};">
+        <div class="g3d-mobile-kpi-title">{escape(str(titulo))}</div>
+        <div class="g3d-mobile-kpi-value" style="color:{cor_hex};">{escape(str(valor))}</div>
+        <div class="g3d-mobile-kpi-subtitle">{escape(str(subtitulo))}</div>
+    </div>
+    """
+
+
+def mobile_section_header(titulo, subtitulo=""):
+    return f"""
+    <div class="g3d-mobile-section-title">
+        <div>
+            <span>{escape(str(titulo))}</span>
+            <small>{escape(str(subtitulo))}</small>
+        </div>
+    </div>
+    """
+
+
+def mobile_status_chip(status):
+    cor = cor_status_hex(status)
+    return f"""
+    <span class="g3d-mobile-status-chip" style="background:{cor}18;color:{cor};border-color:{cor}30;">
+        <i style="background:{cor};"></i>{escape(str(status))}
+    </span>
+    """
+
+
+def mobile_dashboard_css():
+    st.markdown(
+        """
+        <style>
+            .st-key-dashboard_mobile {
+                display: none;
+            }
+
+            @media (min-width: 769px) {
+                .st-key-dashboard_desktop {
+                    display: block !important;
+                }
+
+                .st-key-dashboard_mobile {
+                    display: none !important;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .st-key-dashboard_desktop {
+                    display: none !important;
+                }
+
+                .st-key-dashboard_mobile {
+                    display: block !important;
+                }
+
+                .g3d-mobile-dashboard {
+                    font-family: 'Barlow', system-ui, sans-serif;
+                    padding-bottom: 6px;
+                    width: 100%;
+                }
+
+                .g3d-mobile-hero {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 60%, #58C3F0 100%);
+                    border-radius: 22px;
+                    padding: 18px 18px;
+                    color: #FFFFFF;
+                    box-shadow: 0 14px 34px rgba(10, 26, 92, 0.18);
+                    margin: 10px 0 18px 0;
+                    overflow: hidden;
+                    position: relative;
+                }
+
+                .g3d-mobile-hero:after {
+                    content: "";
+                    width: 130px;
+                    height: 130px;
+                    border-radius: 50%;
+                    background: rgba(255,255,255,0.12);
+                    position: absolute;
+                    right: -42px;
+                    top: -52px;
+                }
+
+                .g3d-mobile-hero-label {
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.86;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-hero-value {
+                    font-size: 32px;
+                    font-weight: 800;
+                    line-height: 1;
+                    margin-bottom: 6px;
+                }
+
+                .g3d-mobile-hero-sub {
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.92;
+                }
+
+                .g3d-mobile-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 12px;
+                    margin-bottom: 18px;
+                }
+
+                .g3d-mobile-kpi {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-top: 4px solid #0C65AA;
+                    border-radius: 18px;
+                    padding: 14px 14px 13px 14px;
+                    box-shadow: 0 9px 24px rgba(10, 26, 92, 0.06);
+                    min-height: 114px;
+                }
+
+                .g3d-mobile-kpi-title {
+                    font-size: 9.5px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    color: #5C6C74;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-kpi-value {
+                    font-size: 25px;
+                    font-weight: 800;
+                    line-height: 1.05;
+                    margin-bottom: 7px;
+                }
+
+                .g3d-mobile-kpi-subtitle {
+                    font-size: 11.5px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.22;
+                }
+
+                .g3d-mobile-section-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin: 22px 0 10px 0;
+                    border-left: 4px solid #100690;
+                    padding-left: 10px;
+                }
+
+                .g3d-mobile-section-title span {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2.2px;
+                    color: #100690;
+                    text-transform: uppercase;
+                    line-height: 1.1;
+                }
+
+                .g3d-mobile-section-title small {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    margin-top: 5px;
+                    line-height: 1.25;
+                }
+
+                .g3d-mobile-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+
+                .g3d-mobile-order-card {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 17px;
+                    padding: 13px 14px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.05);
+                }
+
+                .g3d-mobile-order-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-order-code {
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: #0C65AA;
+                    line-height: 1;
+                }
+
+                .g3d-mobile-order-piece {
+                    font-size: 14px;
+                    font-weight: 800;
+                    color: #1E3137;
+                    margin-bottom: 7px;
+                    line-height: 1.2;
+                }
+
+                .g3d-mobile-order-meta {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 10px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #5C6C74;
+                }
+
+                .g3d-mobile-status-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    border: 1px solid;
+                    border-radius: 999px;
+                    padding: 5px 8px;
+                    font-size: 10.5px;
+                    font-weight: 800;
+                    white-space: nowrap;
+                }
+
+                .g3d-mobile-status-chip i {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    display: inline-block;
+                }
+
+                .g3d-mobile-rank-card {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 17px;
+                    padding: 13px 14px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.05);
+                }
+
+                .g3d-mobile-rank-head {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 12px;
+                    align-items: flex-start;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-mobile-rank-title {
+                    font-size: 13.5px;
+                    font-weight: 800;
+                    color: #1E3137;
+                    line-height: 1.18;
+                }
+
+                .g3d-mobile-rank-value {
+                    font-size: 15px;
+                    font-weight: 800;
+                    color: #0C65AA;
+                    white-space: nowrap;
+                }
+
+                .g3d-mobile-progress {
+                    width: 100%;
+                    height: 9px;
+                    background: #EDF5FA;
+                    border-radius: 999px;
+                    overflow: hidden;
+                }
+
+                .g3d-mobile-progress span {
+                    display: block;
+                    height: 100%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #0C65AA 0%, #58C3F0 100%);
+                }
+
+                .g3d-mobile-status-row {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 16px;
+                    padding: 12px 13px;
+                    margin-bottom: 8px;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                }
+
+                .g3d-mobile-status-row-head {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 8px;
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    color: #1E3137;
+                }
+
+                .g3d-mobile-status-row-head strong {
+                    color: #5C6C74;
+                    font-size: 11.5px;
+                    font-weight: 700;
+                }
+
+                .g3d-mobile-empty {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 16px;
+                    padding: 16px;
+                    font-size: 13px;
+                    color: #5C6C74;
+                    box-shadow: 0 8px 20px rgba(10, 26, 92, 0.04);
+                }
+
+                .g3d-mobile-foot {
+                    margin-top: 20px;
+                    padding: 12px 0 0 0;
+                    border-top: 1px solid rgba(92,108,116,0.16);
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #5C6C74;
+                    line-height: 1.45;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_mobile_dashboard(
+    pedidos_abertos,
+    faturamento_total,
+    lucro_total,
+    margem_media,
+    horas_total,
+    lucro_hora,
+    meta_lucro,
+    pedidos_fechados_mes,
+    faturamento_mes,
+    pedidos_abertos_lista,
+    pecas_resumo,
+    status_resumo,
+):
+    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+    pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:5]
+    max_qtd = max([dados["quantidade"] for _, dados in pecas_ranking], default=1)
+
+    pedidos_cards = ""
+    for item in pedidos_abertos_lista[:5]:
+        codigo, peca, qtd, status, data = item
+        pedidos_cards += f"""
+        <div class="g3d-mobile-order-card">
+            <div class="g3d-mobile-order-top">
+                <div class="g3d-mobile-order-code">{escape(str(codigo))}</div>
+                {mobile_status_chip(status)}
+            </div>
+            <div class="g3d-mobile-order-piece">{escape(nome_curto(peca, 44))}</div>
+            <div class="g3d-mobile-order-meta">
+                <span>Qtd. {escape(str(qtd))}</span>
+                <span>{escape(str(data))}</span>
+            </div>
+        </div>
+        """
+
+    if not pedidos_cards:
+        pedidos_cards = '<div class="g3d-mobile-empty">Nenhum pedido aberto no momento.</div>'
+
+    ranking_cards = ""
+    for nome, dados in pecas_ranking:
+        largura = int((dados["quantidade"] / max_qtd) * 100) if max_qtd else 0
+        ranking_cards += f"""
+        <div class="g3d-mobile-rank-card">
+            <div class="g3d-mobile-rank-head">
+                <div class="g3d-mobile-rank-title">{escape(nome_curto(nome, 46))}</div>
+                <div class="g3d-mobile-rank-value">{dados["quantidade"]:.0f} un.</div>
+            </div>
+            <div class="g3d-mobile-progress"><span style="width:{largura}%;"></span></div>
+        </div>
+        """
+
+    if not ranking_cards:
+        ranking_cards = '<div class="g3d-mobile-empty">Nenhuma peça vendida ainda.</div>'
+
+    total_status = sum(dados["pedidos"] for dados in status_resumo.values())
+    status_cards = ""
+    for status in status_ordem:
+        dados = status_resumo.get(status)
+        if not dados:
+            continue
+        quantidade = dados["pedidos"]
+        percentual = int((quantidade / total_status) * 100) if total_status else 0
+        cor = cor_status_hex(status)
+        status_cards += f"""
+        <div class="g3d-mobile-status-row">
+            <div class="g3d-mobile-status-row-head">
+                <span>{mobile_status_chip(status)}</span>
+                <strong>{quantidade:.0f} · {percentual}%</strong>
+            </div>
+            <div class="g3d-mobile-progress"><span style="width:{percentual}%;background:{cor};"></span></div>
+        </div>
+        """
+
+    if not status_cards:
+        status_cards = '<div class="g3d-mobile-empty">Nenhum pedido cadastrado ainda.</div>'
+
+    html = f"""
+    <div class="g3d-mobile-dashboard">
+        <div class="g3d-mobile-hero">
+            <div class="g3d-mobile-hero-label">Resumo do mês</div>
+            <div class="g3d-mobile-hero-value">{escape(moeda(faturamento_mes))}</div>
+            <div class="g3d-mobile-hero-sub">{pedidos_fechados_mes:.0f} pedidos fechados no mês</div>
+        </div>
+
+        <div class="g3d-mobile-grid">
+            {mobile_kpi_html("Abertos", pedidos_abertos, "pedidos aguardando ação", "blue")}
+            {mobile_kpi_html("Faturamento", moeda(faturamento_total), "pedidos não cancelados", "green")}
+            {mobile_kpi_html("Lucro", moeda(lucro_total), f"margem {margem_media:.0f}%", "green" if lucro_total >= 0 else "red")}
+            {mobile_kpi_html("Lucro/Hora", f"R$ {lucro_hora:.2f}".replace(".", ","), f"meta {moeda(meta_lucro)}/h", "green" if lucro_hora >= meta_lucro else "gray")}
+        </div>
+
+        {mobile_section_header("Pedidos abertos", "O que precisa de atenção agora")}
+        <div class="g3d-mobile-list">{pedidos_cards}</div>
+
+        {mobile_section_header("Peças mais vendidas", "Ranking por quantidade")}
+        <div class="g3d-mobile-list">{ranking_cards}</div>
+
+        {mobile_section_header("Status dos pedidos", "Distribuição atual")}
+        <div>{status_cards}</div>
+
+        <div class="g3d-mobile-foot">
+            Horas vendidas: <strong>{horas_total:.1f}h</strong> ·
+            Faturamento total: <strong>{escape(moeda(faturamento_total))}</strong>
+        </div>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 inicializar_banco()
 conn = conectar()
 
@@ -569,166 +1513,185 @@ header(
     "Visão geral da operação"
 )
 
+mobile_dashboard_css()
 
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    kpi_card(
-        "Pedidos em aberto",
-        str(pedidos_abertos),
-        "pedidos aguardando ação",
-        "blue"
+with st.container(key="dashboard_mobile"):
+    render_mobile_dashboard(
+        pedidos_abertos=pedidos_abertos,
+        faturamento_total=faturamento_total,
+        lucro_total=lucro_total,
+        margem_media=margem_media,
+        horas_total=horas_total,
+        lucro_hora=lucro_hora,
+        meta_lucro=meta_lucro,
+        pedidos_fechados_mes=pedidos_fechados_mes,
+        faturamento_mes=faturamento_mes,
+        pedidos_abertos_lista=pedidos_abertos_lista,
+        pecas_resumo=pecas_resumo,
+        status_resumo=status_resumo,
     )
 
-with col2:
-    kpi_card(
-        "Faturamento",
-        moeda(faturamento_total),
-        "pedidos não cancelados",
-        "green"
-    )
+with st.container(key="dashboard_desktop"):
 
-with col3:
-    kpi_card(
-        "Lucro",
-        moeda(lucro_total),
-        f"margem {margem_media:.0f}%",
-        "green" if lucro_total >= 0 else "red"
-    )
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-with col4:
-    kpi_card(
-        "Horas impressas",
-        f"{horas_total:.1f}h",
-        "tempo estimado vendido",
-        "orange"
-    )
+    with col1:
+        kpi_card(
+            "Pedidos em aberto",
+            str(pedidos_abertos),
+            "pedidos aguardando ação",
+            "blue"
+        )
 
-with col5:
-    kpi_card(
-        "Lucro/Hora",
-        f"R$ {lucro_hora:.2f}".replace(".", ","),
-        f"meta: {moeda(meta_lucro)}/h",
-        "green" if lucro_hora >= meta_lucro else "gray"
-    )
+    with col2:
+        kpi_card(
+            "Faturamento",
+            moeda(faturamento_total),
+            "pedidos não cancelados",
+            "green"
+        )
 
+    with col3:
+        kpi_card(
+            "Lucro",
+            moeda(lucro_total),
+            f"margem {margem_media:.0f}%",
+            "green" if lucro_total >= 0 else "red"
+        )
 
-section_title(
-    "Resumo da operação",
-    "Indicadores comerciais calculados a partir dos pedidos cadastrados"
-)
+    with col4:
+        kpi_card(
+            "Horas impressas",
+            f"{horas_total:.1f}h",
+            "tempo estimado vendido",
+            "orange"
+        )
 
-
-col_a, col_b, col_c, col_d, col_e = st.columns(5)
-
-with col_a:
-    kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
-
-with col_b:
-    kpi_card("Peças", str(total_pecas), "modelos cadastrados", "orange")
-
-with col_c:
-    kpi_card("Filamentos", str(total_filamentos), "rolos cadastrados", "gray")
-
-with col_d:
-    kpi_card("Ticket médio", moeda(ticket_medio), "por pedido cadastrado", "green")
-
-with col_e:
-    kpi_card("Fechados no mês", str(pedidos_fechados_mes), f"fat. mês {moeda(faturamento_mes)}", "green")
+    with col5:
+        kpi_card(
+            "Lucro/Hora",
+            f"R$ {lucro_hora:.2f}".replace(".", ","),
+            f"meta: {moeda(meta_lucro)}/h",
+            "green" if lucro_hora >= meta_lucro else "gray"
+        )
 
 
-section_title(
-    "Pedidos recentes",
-    "Últimos pedidos registrados no sistema"
-)
-
-render_tabela(
-    ["Pedido", "Cliente", "Peça", "Qtd.", "Status", "Total"],
-    pedidos_recentes,
-    "Nenhum pedido cadastrado ainda."
-)
-
-
-col_r1, col_r2 = st.columns(2)
-
-with col_r1:
     section_title(
-        "Peças mais vendidas",
-        "Ranking por quantidade vendida"
+        "Resumo da operação",
+        "Indicadores comerciais calculados a partir dos pedidos cadastrados"
     )
-    pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:8]
-    if pecas_ranking:
-        df_pecas = pd.DataFrame({
-            "Peça": [nome for nome, _ in pecas_ranking],
-            "Quantidade": [dados["quantidade"] for _, dados in pecas_ranking],
-        }).set_index("Peça")
-        st.bar_chart(df_pecas, height=320)
-    else:
-        st.caption("Nenhuma peça vendida ainda.")
 
-with col_r2:
+
+    col_a, col_b, col_c, col_d, col_e = st.columns(5)
+
+    with col_a:
+        kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
+
+    with col_b:
+        kpi_card("Peças", str(total_pecas), "modelos cadastrados", "orange")
+
+    with col_c:
+        kpi_card("Filamentos", str(total_filamentos), "rolos cadastrados", "gray")
+
+    with col_d:
+        kpi_card("Ticket médio", moeda(ticket_medio), "por pedido cadastrado", "green")
+
+    with col_e:
+        kpi_card("Fechados no mês", str(pedidos_fechados_mes), f"fat. mês {moeda(faturamento_mes)}", "green")
+
+
     section_title(
-        "Pedidos por status",
-        "Distribuição visual dos pedidos"
+        "Pedidos recentes",
+        "Últimos pedidos registrados no sistema"
     )
-    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
-    render_status_visual(status_resumo, status_ordem)
 
-
-col_a1, col_a2 = st.columns(2)
-
-with col_a1:
-    section_title(
-        "Pedidos abertos por peça",
-        "Lista rápida do que ainda precisa de ação"
-    )
     render_tabela(
-        ["Pedido", "Peça", "Qtd.", "Status", "Data"],
-        pedidos_abertos_lista,
-        "Nenhum pedido aberto no momento."
-    )
-
-with col_a2:
-    section_title(
-        "Clientes com mais pedidos",
-        "Ranking por número de pedidos"
-    )
-    clientes_ranking = sorted(clientes_resumo.items(), key=lambda item: item[1]["pedidos"], reverse=True)[:5]
-    render_tabela(
-        ["Cliente", "Pedidos", "Faturamento", "Lucro"],
-        [[nome, f"{dados['pedidos']:.0f}", moeda(dados["faturamento"]), moeda(dados["lucro"])] for nome, dados in clientes_ranking],
-        "Nenhum cliente com pedido cadastrado ainda."
+        ["Pedido", "Cliente", "Peça", "Qtd.", "Status", "Total"],
+        pedidos_recentes,
+        "Nenhum pedido cadastrado ainda."
     )
 
 
-st.write("")
-st.write("")
+    col_r1, col_r2 = st.columns(2)
+
+    with col_r1:
+        section_title(
+            "Peças mais vendidas",
+            "Ranking por quantidade vendida"
+        )
+        pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:8]
+        if pecas_ranking:
+            df_pecas = pd.DataFrame({
+                "Peça": [nome for nome, _ in pecas_ranking],
+                "Quantidade": [dados["quantidade"] for _, dados in pecas_ranking],
+            }).set_index("Peça")
+            st.bar_chart(df_pecas, height=320)
+        else:
+            st.caption("Nenhuma peça vendida ainda.")
+
+    with col_r2:
+        section_title(
+            "Pedidos por status",
+            "Distribuição visual dos pedidos"
+        )
+        status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+        render_status_visual(status_resumo, status_ordem)
 
 
-st.markdown(
-    f"""
-    <div style="
-        margin-top:36px;
-        padding-top:14px;
-        border-top:1px solid rgba(92,108,116,0.18);
-        font-family:'Barlow', system-ui, sans-serif;
-        font-size:12px;
-        font-weight:500;
-        color:#5C6C74;
-        display:flex;
-        gap:8px;
-        flex-wrap:wrap;
-        align-items:center;
-    ">
-        <span style="font-weight:700;">Parâmetros atuais:</span>
-        <span>Energia {moeda(energia)}/h</span>
-        <span>·</span>
-        <span>Depreciação {moeda(depreciacao)}/h</span>
-        <span>·</span>
-        <span>Margem padrão {margem:.0f}%</span>
-        <span>·</span>
-        <span>Meta lucro/hora {moeda(meta_lucro)}</span>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    col_a1, col_a2 = st.columns(2)
+
+    with col_a1:
+        section_title(
+            "Pedidos abertos por peça",
+            "Lista rápida do que ainda precisa de ação"
+        )
+        render_tabela(
+            ["Pedido", "Peça", "Qtd.", "Status", "Data"],
+            pedidos_abertos_lista,
+            "Nenhum pedido aberto no momento."
+        )
+
+    with col_a2:
+        section_title(
+            "Clientes com mais pedidos",
+            "Ranking por número de pedidos"
+        )
+        clientes_ranking = sorted(clientes_resumo.items(), key=lambda item: item[1]["pedidos"], reverse=True)[:5]
+        render_tabela(
+            ["Cliente", "Pedidos", "Faturamento", "Lucro"],
+            [[nome, f"{dados['pedidos']:.0f}", moeda(dados["faturamento"]), moeda(dados["lucro"])] for nome, dados in clientes_ranking],
+            "Nenhum cliente com pedido cadastrado ainda."
+        )
+
+
+    st.write("")
+    st.write("")
+
+
+    st.markdown(
+        f"""
+        <div style="
+            margin-top:36px;
+            padding-top:14px;
+            border-top:1px solid rgba(92,108,116,0.18);
+            font-family:'Barlow', system-ui, sans-serif;
+            font-size:12px;
+            font-weight:500;
+            color:#5C6C74;
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+            align-items:center;
+        ">
+            <span style="font-weight:700;">Parâmetros atuais:</span>
+            <span>Energia {moeda(energia)}/h</span>
+            <span>·</span>
+            <span>Depreciação {moeda(depreciacao)}/h</span>
+            <span>·</span>
+            <span>Margem padrão {margem:.0f}%</span>
+            <span>·</span>
+            <span>Meta lucro/hora {moeda(meta_lucro)}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )

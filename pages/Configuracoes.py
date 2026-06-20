@@ -2,6 +2,7 @@ import streamlit as st
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
 from components.section import section_title, small_section
@@ -22,6 +23,7 @@ inicializar_banco()
 
 sidebar()
 mobile_bottom_nav("mais")
+mobile_summary_css("configuracoes")
 header("Configurações", "Parâmetros principais do sistema")
 
 
@@ -46,19 +48,33 @@ margem = config[2]
 meta = config[3]
 
 
-col1, col2, col3, col4 = st.columns(4)
+with st.container(key="configuracoes_mobile_resumo"):
+    render_mobile_summary(
+        hero_label="Parâmetros ativos",
+        hero_value=f"{moeda(meta)}/h",
+        hero_subtitle=f"meta de lucro/hora · margem padrão {margem:.0f}%",
+        kpis=[
+            {"titulo": "Energia", "valor": f"{moeda(energia)}/h", "subtitulo": "custo por hora", "cor": "#0C65AA"},
+            {"titulo": "Depreciação", "valor": f"{moeda(depreciacao)}/h", "subtitulo": "desgaste", "cor": "#B85C20"},
+            {"titulo": "Margem", "valor": f"{margem:.0f}%", "subtitulo": "lucro sugerido", "cor": "#1F8A4C"},
+            {"titulo": "Meta", "valor": moeda(meta), "subtitulo": "referência mínima", "cor": "#100690"},
+        ],
+    )
 
-with col1:
-    kpi_card("Energia", f"{moeda(energia)}/h", "custo estimado por hora", "blue")
+with st.container(key="configuracoes_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    kpi_card("Depreciação", f"{moeda(depreciacao)}/h", "desgaste da impressora", "orange")
+    with col1:
+        kpi_card("Energia", f"{moeda(energia)}/h", "custo estimado por hora", "blue")
 
-with col3:
-    kpi_card("Margem padrão", f"{margem:.0f}%", "lucro sugerido", "green")
+    with col2:
+        kpi_card("Depreciação", f"{moeda(depreciacao)}/h", "desgaste da impressora", "orange")
 
-with col4:
-    kpi_card("Meta lucro/hora", moeda(meta), "referência mínima", "gray")
+    with col3:
+        kpi_card("Margem padrão", f"{margem:.0f}%", "lucro sugerido", "green")
+
+    with col4:
+        kpi_card("Meta lucro/hora", moeda(meta), "referência mínima", "gray")
 
 
 section_title(

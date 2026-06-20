@@ -3,6 +3,7 @@ from datetime import date
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -278,6 +279,7 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("clientes")
+mobile_summary_css("clientes")
 header("Clientes", "Cadastro e gestão dos clientes do Ateliê")
 
 
@@ -309,19 +311,34 @@ WHERE tipo = 'Pessoa Jurídica'
 conn.close()
 
 
-col1, col2, col3, col4 = st.columns(4)
+with st.container(key="clientes_mobile_resumo"):
+    render_mobile_summary(
+        hero_label="Base de clientes",
+        hero_value=f"{total_clientes} clientes",
+        hero_subtitle=f"{clientes_ativos} ativos · {clientes_pf} PF · {clientes_pj} PJ",
+        kpis=[
+            {"titulo": "Ativos", "valor": clientes_ativos, "subtitulo": "disponíveis", "cor": "#1F8A4C"},
+            {"titulo": "Pessoa Física", "valor": clientes_pf, "subtitulo": "clientes individuais", "cor": "#B85C20"},
+            {"titulo": "Pessoa Jurídica", "valor": clientes_pj, "subtitulo": "empresas", "cor": "#0C65AA"},
+            {"titulo": "Total", "valor": total_clientes, "subtitulo": "cadastros", "cor": "#100690"},
+        ],
+        note="<strong>Atalho:</strong> use o botão <strong>+ Novo Cliente</strong> abaixo para registrar um novo contato.",
+    )
 
-with col1:
-    kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
+with st.container(key="clientes_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    kpi_card("Ativos", str(clientes_ativos), "clientes disponíveis", "green")
+    with col1:
+        kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
 
-with col3:
-    kpi_card("Pessoa Física", str(clientes_pf), "clientes individuais", "orange")
+    with col2:
+        kpi_card("Ativos", str(clientes_ativos), "clientes disponíveis", "green")
 
-with col4:
-    kpi_card("Pessoa Jurídica", str(clientes_pj), "empresas cadastradas", "gray")
+    with col3:
+        kpi_card("Pessoa Física", str(clientes_pf), "clientes individuais", "orange")
+
+    with col4:
+        kpi_card("Pessoa Jurídica", str(clientes_pj), "empresas cadastradas", "gray")
 
 
 section_title(

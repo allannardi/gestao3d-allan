@@ -2,6 +2,7 @@ import streamlit as st
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -771,6 +772,7 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("pecas")
+mobile_summary_css("pecas")
 header("Peças", "Biblioteca de modelos e cálculo de rentabilidade")
 
 
@@ -894,24 +896,39 @@ lucro_hora_medio = soma_lucro_hora / total_pecas if total_pecas > 0 else 0
 custo_unitario_medio = soma_custo_unitario / total_pecas if total_pecas > 0 else 0
 
 
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    kpi_card("Peças", str(total_pecas), "modelos cadastrados", "blue")
-
-with col2:
-    kpi_card("Recomendadas", str(total_recomendadas), "acima da meta", "green")
-
-with col3:
-    kpi_card("Custo unit. médio", moeda(custo_unitario_medio), "média por unidade", "orange")
-
-with col4:
-    kpi_card(
-        "Lucro/Hora médio",
-        f"R$ {lucro_hora_medio:.2f}/h".replace(".", ","),
-        f"meta: R$ {meta_lucro_hora:.2f}/h".replace(".", ","),
-        "gray"
+with st.container(key="pecas_mobile_resumo"):
+    render_mobile_summary(
+        hero_label="Biblioteca de peças",
+        hero_value=f"{total_pecas} peças",
+        hero_subtitle=f"{total_recomendadas} acima da meta · lucro/hora médio R$ {lucro_hora_medio:.2f}/h".replace(".", ","),
+        kpis=[
+            {"titulo": "Recomendadas", "valor": total_recomendadas, "subtitulo": "acima da meta", "cor": "#1F8A4C"},
+            {"titulo": "Custo médio", "valor": moeda(custo_unitario_medio), "subtitulo": "por unidade", "cor": "#B85C20"},
+            {"titulo": "Lucro/Hora", "valor": f"R$ {lucro_hora_medio:.2f}/h".replace(".", ","), "subtitulo": "média das peças", "cor": "#0C65AA"},
+            {"titulo": "Meta", "valor": f"R$ {meta_lucro_hora:.2f}/h".replace(".", ","), "subtitulo": "referência mínima", "cor": "#100690"},
+        ],
+        note="<strong>Atalho:</strong> use o botão <strong>+ Nova Peça</strong> abaixo para cadastrar um novo modelo.",
     )
+
+with st.container(key="pecas_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        kpi_card("Peças", str(total_pecas), "modelos cadastrados", "blue")
+
+    with col2:
+        kpi_card("Recomendadas", str(total_recomendadas), "acima da meta", "green")
+
+    with col3:
+        kpi_card("Custo unit. médio", moeda(custo_unitario_medio), "média por unidade", "orange")
+
+    with col4:
+        kpi_card(
+            "Lucro/Hora médio",
+            f"R$ {lucro_hora_medio:.2f}/h".replace(".", ","),
+            f"meta: R$ {meta_lucro_hora:.2f}/h".replace(".", ","),
+            "gray"
+        )
 
 
 section_title(

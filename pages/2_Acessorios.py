@@ -2,6 +2,7 @@ import streamlit as st
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -163,6 +164,7 @@ inicializar_banco()
 
 sidebar()
 mobile_bottom_nav("mais")
+mobile_summary_css("acessorios")
 header("Acessórios", "Cadastro e controle dos itens adicionais")
 
 
@@ -188,19 +190,34 @@ FROM acessorios
 conn.close()
 
 
-col1, col2, col3, col4 = st.columns(4)
+with st.container(key="acessorios_mobile_resumo"):
+    render_mobile_summary(
+        hero_label="Itens complementares",
+        hero_value=f"{total_acessorios} acessórios",
+        hero_subtitle=f"{categorias} categorias · custo médio {moeda(custo_medio)}",
+        kpis=[
+            {"titulo": "Categorias", "valor": categorias, "subtitulo": "tipos diferentes", "cor": "#1F8A4C"},
+            {"titulo": "Custo médio", "valor": moeda(custo_medio), "subtitulo": "por unidade", "cor": "#B85C20"},
+            {"titulo": "Valor base", "valor": moeda(valor_total), "subtitulo": "custos somados", "cor": "#8A8F98"},
+            {"titulo": "Total", "valor": total_acessorios, "subtitulo": "itens", "cor": "#0C65AA"},
+        ],
+        note="<strong>Atalho:</strong> use o botão <strong>+ Novo Acessório</strong> abaixo para cadastrar um novo item.",
+    )
 
-with col1:
-    kpi_card("Acessórios", str(total_acessorios), "itens cadastrados", "blue")
+with st.container(key="acessorios_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    kpi_card("Categorias", str(categorias), "tipos diferentes", "green")
+    with col1:
+        kpi_card("Acessórios", str(total_acessorios), "itens cadastrados", "blue")
 
-with col3:
-    kpi_card("Custo médio", moeda(custo_medio), "média por unidade", "orange")
+    with col2:
+        kpi_card("Categorias", str(categorias), "tipos diferentes", "green")
 
-with col4:
-    kpi_card("Valor base", moeda(valor_total), "soma dos custos unitários", "gray")
+    with col3:
+        kpi_card("Custo médio", moeda(custo_medio), "média por unidade", "orange")
+
+    with col4:
+        kpi_card("Valor base", moeda(valor_total), "soma dos custos unitários", "gray")
 
 
 section_title(

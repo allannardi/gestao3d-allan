@@ -3,6 +3,7 @@ from datetime import date
 
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
+from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -266,6 +267,7 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("mais")
+mobile_summary_css("filamentos")
 header("Filamentos", "Cadastro e controle dos rolos utilizados")
 
 
@@ -293,19 +295,34 @@ FROM filamentos
 conn.close()
 
 
-col1, col2, col3, col4 = st.columns(4)
+with st.container(key="filamentos_mobile_resumo"):
+    render_mobile_summary(
+        hero_label="Estoque de filamentos",
+        hero_value=f"{filamentos_ativos} ativos",
+        hero_subtitle=f"{total_filamentos} rolos cadastrados · {moeda(valor_total)} investidos",
+        kpis=[
+            {"titulo": "Total", "valor": total_filamentos, "subtitulo": "rolos cadastrados", "cor": "#0C65AA"},
+            {"titulo": "Ativos", "valor": filamentos_ativos, "subtitulo": "disponíveis", "cor": "#1F8A4C"},
+            {"titulo": "Consumidos", "valor": filamentos_consumidos, "subtitulo": "finalizados", "cor": "#8A8F98"},
+            {"titulo": "Investido", "valor": moeda(valor_total), "subtitulo": "em filamentos", "cor": "#B85C20"},
+        ],
+        note="<strong>Atalho:</strong> use o botão <strong>+ Novo Filamento</strong> abaixo para cadastrar um novo rolo.",
+    )
 
-with col1:
-    kpi_card("Filamentos", str(total_filamentos), "rolos cadastrados", "blue")
+with st.container(key="filamentos_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    kpi_card("Ativos", str(filamentos_ativos), "em uso disponível", "green")
+    with col1:
+        kpi_card("Filamentos", str(total_filamentos), "rolos cadastrados", "blue")
 
-with col3:
-    kpi_card("Consumidos", str(filamentos_consumidos), "rolos finalizados", "gray")
+    with col2:
+        kpi_card("Ativos", str(filamentos_ativos), "em uso disponível", "green")
 
-with col4:
-    kpi_card("Valor investido", moeda(valor_total), "total em filamentos", "orange")
+    with col3:
+        kpi_card("Consumidos", str(filamentos_consumidos), "rolos finalizados", "gray")
+
+    with col4:
+        kpi_card("Valor investido", moeda(valor_total), "total em filamentos", "orange")
 
 
 section_title(

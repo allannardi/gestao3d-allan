@@ -1,4 +1,5 @@
 import streamlit as st
+from html import escape
 from datetime import date
 
 from components.sidebar import sidebar
@@ -293,35 +294,152 @@ def cor_status_hex(status):
     return mapa.get(status, "#8A8F98")
 
 
-def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status, total):
-    cor = cor_status_hex(status)
+def pedidos_mobile_css():
     st.markdown(
-        f"""
-        <div style="border:1px solid #DEE9EF;border-top:4px solid {cor};border-radius:14px;background:#FFFFFF;padding:14px 16px;margin-bottom:4px;font-family:'Barlow', system-ui, sans-serif;">
-            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;">
-                <div>
-                    <div style="font-size:26px;font-weight:800;color:#0A1A5C;line-height:1;">{codigo}</div>
-                    <div style="margin-top:6px;font-size:12px;color:#5C6C74;font-weight:600;">{cliente_nome}</div>
-                </div>
-                <div style="text-align:left; flex:1; min-width:260px;">
-                    <div style="font-size:17px;font-weight:800;color:#1E3137;line-height:1.2;">{peca_nome}</div>
-                    <div style="margin-top:5px;font-size:12px;color:#5C6C74;font-weight:600;">{peca_codigo}</div>
-                </div>
-                <div style="text-align:center; min-width:82px;">
-                    <div style="font-size:24px;font-weight:800;color:#0C65AA;line-height:1;">{quantidade:.0f}x</div>
-                    <div style="font-size:11px;color:#5C6C74;font-weight:600;margin-top:4px;">quantidade</div>
-                </div>
-                <div style="text-align:right; min-width:130px;">
-                    <div style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:{cor}18;color:{cor};font-size:12px;font-weight:800;">
-                        <span style="width:9px;height:9px;border-radius:50%;background:{cor};display:inline-block;"></span>{status}
-                    </div>
-                    <div style="margin-top:10px;font-size:15px;color:#1E3137;font-weight:800;">{moeda(total)}</div>
-                </div>
-            </div>
-        </div>
+        """
+        <style>
+            @media (max-width: 768px) {
+                .g3d-pedido-card {
+                    border-radius: 18px !important;
+                    padding: 15px 15px 14px 15px !important;
+                    margin-bottom: 8px !important;
+                    box-shadow: 0 8px 22px rgba(10, 26, 92, 0.06) !important;
+                }
+
+                .g3d-pedido-top {
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    gap: 10px !important;
+                    margin-bottom: 10px !important;
+                }
+
+                .g3d-pedido-code {
+                    font-size: 25px !important;
+                    color: #0C65AA !important;
+                }
+
+                .g3d-pedido-status {
+                    font-size: 10.5px !important;
+                    padding: 5px 8px !important;
+                    white-space: nowrap !important;
+                }
+
+                .g3d-pedido-main {
+                    display: block !important;
+                }
+
+                .g3d-pedido-piece {
+                    font-size: 15.5px !important;
+                    line-height: 1.18 !important;
+                    margin-bottom: 6px !important;
+                }
+
+                .g3d-pedido-client {
+                    font-size: 11.5px !important;
+                    margin-bottom: 11px !important;
+                }
+
+                .g3d-pedido-bottom {
+                    display: grid !important;
+                    grid-template-columns: 1fr 1fr 1fr !important;
+                    gap: 8px !important;
+                    margin-top: 10px !important;
+                }
+
+                .g3d-pedido-mini {
+                    background: #F4F8FB !important;
+                    border: 1px solid #DEE9EF !important;
+                    border-radius: 13px !important;
+                    padding: 9px 8px !important;
+                    text-align: center !important;
+                }
+
+                .g3d-pedido-mini strong {
+                    display: block !important;
+                    font-size: 16px !important;
+                    font-weight: 800 !important;
+                    color: #1E3137 !important;
+                    line-height: 1 !important;
+                    margin-bottom: 4px !important;
+                }
+
+                .g3d-pedido-mini span {
+                    display: block !important;
+                    font-size: 9.5px !important;
+                    font-weight: 800 !important;
+                    color: #5C6C74 !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.9px !important;
+                    line-height: 1 !important;
+                }
+
+                div[data-testid="stExpander"] {
+                    border-radius: 16px !important;
+                    overflow: hidden !important;
+                    margin-bottom: 14px !important;
+                }
+
+                div[data-testid="stExpander"] summary p {
+                    font-size: 12px !important;
+                    font-weight: 800 !important;
+                    color: #0C65AA !important;
+                }
+            }
+        </style>
         """,
         unsafe_allow_html=True
     )
+
+
+def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status, total, data_pedido="-"):
+    cor = cor_status_hex(status)
+
+    codigo = escape(str(codigo))
+    cliente_nome = escape(str(cliente_nome))
+    peca_codigo = escape(str(peca_codigo))
+    peca_nome = escape(str(peca_nome))
+    status = escape(str(status))
+    data_pedido = escape(str(data_pedido))
+    total_fmt = escape(moeda(total))
+
+    html = f"""
+<div class="g3d-pedido-card" style="border:1px solid #DEE9EF;border-top:4px solid {cor};border-radius:14px;background:#FFFFFF;padding:14px 16px;margin-bottom:4px;font-family:'Barlow', system-ui, sans-serif;">
+    <div class="g3d-pedido-top">
+        <div class="g3d-pedido-code" style="font-size:28px;font-weight:800;color:#0A1A5C;line-height:1;">{codigo}</div>
+        <div class="g3d-pedido-status" style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:{cor}18;color:{cor};font-size:12px;font-weight:800;">
+            <span style="width:9px;height:9px;border-radius:50%;background:{cor};display:inline-block;"></span>{status}
+        </div>
+    </div>
+
+    <div class="g3d-pedido-main">
+        <div class="g3d-pedido-piece" style="font-size:18px;font-weight:800;color:#1E3137;line-height:1.2;">{peca_nome}</div>
+        <div class="g3d-pedido-client" style="margin-top:5px;font-size:12px;color:#5C6C74;font-weight:600;">{cliente_nome}</div>
+    </div>
+
+    <div class="g3d-pedido-bottom">
+        <div class="g3d-pedido-mini">
+            <strong>{quantidade:.0f}x</strong>
+            <span>Qtd.</span>
+        </div>
+        <div class="g3d-pedido-mini">
+            <strong>{total_fmt}</strong>
+            <span>Total</span>
+        </div>
+        <div class="g3d-pedido-mini">
+            <strong>{data_pedido}</strong>
+            <span>Data</span>
+        </div>
+    </div>
+
+    <div style="margin-top:9px;font-size:11px;color:#8A8F98;font-weight:600;">{peca_codigo}</div>
+</div>
+"""
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def carregar_filamentos_ativos():
@@ -717,6 +835,194 @@ def editar_pedido_dialog(pedido_id):
         st.rerun()
 
 
+def pedidos_resumo_mobile_css():
+    st.markdown(
+        """
+        <style>
+            .st-key-pedidos_mobile_resumo {
+                display: none;
+            }
+
+            @media (min-width: 769px) {
+                .st-key-pedidos_desktop_resumo {
+                    display: block !important;
+                }
+
+                .st-key-pedidos_mobile_resumo {
+                    display: none !important;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .st-key-pedidos_desktop_resumo {
+                    display: none !important;
+                }
+
+                .st-key-pedidos_mobile_resumo {
+                    display: block !important;
+                }
+
+                .g3d-pedidos-mobile {
+                    font-family: 'Barlow', system-ui, sans-serif;
+                    margin-top: 8px;
+                    margin-bottom: 18px;
+                }
+
+                .g3d-pedidos-hero {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 58%, #58C3F0 100%);
+                    border-radius: 22px;
+                    padding: 18px 18px;
+                    color: #FFFFFF;
+                    box-shadow: 0 14px 34px rgba(10, 26, 92, 0.18);
+                    margin: 8px 0 14px 0;
+                    overflow: hidden;
+                    position: relative;
+                }
+
+                .g3d-pedidos-hero:after {
+                    content: "";
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 50%;
+                    background: rgba(255,255,255,0.12);
+                    position: absolute;
+                    right: -38px;
+                    top: -48px;
+                }
+
+                .g3d-pedidos-hero-label {
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.86;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-pedidos-hero-value {
+                    font-size: 32px;
+                    font-weight: 800;
+                    line-height: 1;
+                    margin-bottom: 6px;
+                }
+
+                .g3d-pedidos-hero-sub {
+                    font-size: 13px;
+                    font-weight: 500;
+                    opacity: 0.92;
+                }
+
+                .g3d-pedidos-mobile-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 12px;
+                }
+
+                .g3d-pedidos-mobile-kpi {
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-top: 4px solid #0C65AA;
+                    border-radius: 18px;
+                    padding: 14px 14px 13px 14px;
+                    box-shadow: 0 9px 24px rgba(10, 26, 92, 0.06);
+                    min-height: 108px;
+                }
+
+                .g3d-pedidos-mobile-kpi-title {
+                    font-size: 9.5px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    color: #5C6C74;
+                    margin-bottom: 8px;
+                }
+
+                .g3d-pedidos-mobile-kpi-value {
+                    font-size: 25px;
+                    font-weight: 800;
+                    line-height: 1.05;
+                    margin-bottom: 7px;
+                }
+
+                .g3d-pedidos-mobile-kpi-subtitle {
+                    font-size: 11.5px;
+                    font-weight: 500;
+                    color: #5C6C74;
+                    line-height: 1.22;
+                }
+
+                .g3d-pedidos-mobile-actions {
+                    margin-top: 12px;
+                    background: #FFFFFF;
+                    border: 1px solid #DEE9EF;
+                    border-radius: 18px;
+                    padding: 12px 14px;
+                    box-shadow: 0 9px 24px rgba(10, 26, 92, 0.05);
+                    color: #5C6C74;
+                    font-size: 12px;
+                    font-weight: 600;
+                    line-height: 1.35;
+                }
+
+                .g3d-pedidos-mobile-actions strong {
+                    color: #1E3137;
+                    font-weight: 800;
+                }
+
+                .st-key-btn_novo_pedido button {
+                    background: #0C65AA !important;
+                    color: #FFFFFF !important;
+                    border-color: #0C65AA !important;
+                    min-height: 48px !important;
+                    font-weight: 800 !important;
+                    border-radius: 15px !important;
+                    box-shadow: 0 8px 20px rgba(12, 101, 170, 0.18) !important;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def pedidos_mobile_kpi_html(titulo, valor, subtitulo, cor="#0C65AA"):
+    return f"""
+    <div class="g3d-pedidos-mobile-kpi" style="border-top-color:{cor};">
+        <div class="g3d-pedidos-mobile-kpi-title">{escape(str(titulo))}</div>
+        <div class="g3d-pedidos-mobile-kpi-value" style="color:{cor};">{escape(str(valor))}</div>
+        <div class="g3d-pedidos-mobile-kpi-subtitle">{escape(str(subtitulo))}</div>
+    </div>
+    """
+
+
+def render_pedidos_mobile_resumo(total_pedidos, pedidos_abertos, faturamento_total, lucro_total, ticket_medio):
+    html = f"""
+    <div class="g3d-pedidos-mobile">
+        <div class="g3d-pedidos-hero">
+            <div class="g3d-pedidos-hero-label">Resumo dos pedidos</div>
+            <div class="g3d-pedidos-hero-value">{escape(moeda(faturamento_total))}</div>
+            <div class="g3d-pedidos-hero-sub">{total_pedidos:.0f} pedidos cadastrados · {pedidos_abertos:.0f} em aberto</div>
+        </div>
+
+        <div class="g3d-pedidos-mobile-grid">
+            {pedidos_mobile_kpi_html("Em aberto", pedidos_abertos, "aguardando conclusão", "#B85C20")}
+            {pedidos_mobile_kpi_html("Lucro", moeda(lucro_total), "resultado estimado", "#1F8A4C" if lucro_total >= 0 else "#D11A2A")}
+            {pedidos_mobile_kpi_html("Ticket médio", moeda(ticket_medio), "por pedido", "#0C65AA")}
+            {pedidos_mobile_kpi_html("Total", total_pedidos, "pedidos cadastrados", "#100690")}
+        </div>
+
+        <div class="g3d-pedidos-mobile-actions">
+            <strong>Atalho:</strong> use o botão <strong>+ Novo Pedido</strong> abaixo para registrar uma nova venda.
+        </div>
+    </div>
+    """
+
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
+
+
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -725,6 +1031,8 @@ require_login()
 inicializar_banco()
 sidebar()
 mobile_bottom_nav("pedidos")
+pedidos_mobile_css()
+pedidos_resumo_mobile_css()
 header("Pedidos", "Cadastro e acompanhamento dos pedidos do Ateliê")
 
 
@@ -784,19 +1092,29 @@ for r in resumo:
 ticket_medio = faturamento_total / total_pedidos if total_pedidos > 0 else 0
 
 
-col1, col2, col3, col4 = st.columns(4)
+with st.container(key="pedidos_mobile_resumo"):
+    render_pedidos_mobile_resumo(
+        total_pedidos=total_pedidos,
+        pedidos_abertos=pedidos_abertos,
+        faturamento_total=faturamento_total,
+        lucro_total=lucro_total,
+        ticket_medio=ticket_medio,
+    )
 
-with col1:
-    kpi_card("Pedidos", str(total_pedidos), "pedidos cadastrados", "blue")
+with st.container(key="pedidos_desktop_resumo"):
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    kpi_card("Em aberto", str(pedidos_abertos), "aguardando conclusão", "orange")
+    with col1:
+        kpi_card("Pedidos", str(total_pedidos), "pedidos cadastrados", "blue")
 
-with col3:
-    kpi_card("Faturamento", moeda(faturamento_total), "pedidos não cancelados", "green")
+    with col2:
+        kpi_card("Em aberto", str(pedidos_abertos), "aguardando conclusão", "orange")
 
-with col4:
-    kpi_card("Lucro estimado", moeda(lucro_total), "margem prevista", "green")
+    with col3:
+        kpi_card("Faturamento", moeda(faturamento_total), "pedidos não cancelados", "green")
+
+    with col4:
+        kpi_card("Lucro estimado", moeda(lucro_total), "margem prevista", "green")
 
 
 section_title(
@@ -1154,6 +1472,7 @@ for pedido in pedidos:
             quantidade=quantidade,
             status=status,
             total=calc["total"],
+            data_pedido=data_pedido,
         )
 
         with st.expander("Detalhes, valores e ações"):

@@ -53,6 +53,9 @@ def mobile_bottom_nav(active=""):
                 }}
 
                 h1 {{
+                    color: #0A1A5C !important;
+                    font-family: 'Barlow', system-ui, sans-serif !important;
+                    font-weight: 800 !important;
                     font-size: 1.55rem !important;
                     line-height: 1.15 !important;
                     margin-bottom: 0.15rem !important;

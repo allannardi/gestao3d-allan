@@ -1,6 +1,7 @@
 import streamlit as st
 
 from components.sidebar import sidebar
+from components.mobile_nav import mobile_bottom_nav
 from components.header import header
 from components.kpi import kpi_card
 from components.section import section_title, small_section
@@ -20,6 +21,7 @@ require_login()
 inicializar_banco()
 
 sidebar()
+mobile_bottom_nav("mais")
 header("Configurações", "Parâmetros principais do sistema")
 
 

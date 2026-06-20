@@ -1,6 +1,7 @@
 import streamlit as st
 
 from components.sidebar import sidebar
+from components.mobile_nav import mobile_bottom_nav
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -161,6 +162,7 @@ require_login()
 inicializar_banco()
 
 sidebar()
+mobile_bottom_nav("mais")
 header("Acessórios", "Cadastro e controle dos itens adicionais")
 
 

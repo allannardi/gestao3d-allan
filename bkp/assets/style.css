@@ -1,0 +1,52 @@
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    visibility: hidden;
+}
+
+.main {
+    background-color: #F8F9FB;
+}
+
+h1 {
+    color: #1F2937;
+}
+
+h2, h3 {
+    color: #374151;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #FFFFFF;
+    border-right: 1px solid #E5E7EB;
+}
+
+div[data-testid="metric-container"] {
+    background: white;
+    border: 1px solid #E5E7EB;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    transition: 0.3s;
+}
+
+div[data-testid="metric-container"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+}
+
+.stButton button {
+    border-radius: 10px;
+    border: 1px solid #D1D5DB;
+}
+
+.stTextInput input,
+.stNumberInput input {
+    border-radius: 10px;
+}

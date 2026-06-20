@@ -1,6 +1,7 @@
 import streamlit as st
 
 from components.sidebar import sidebar
+from components.mobile_nav import mobile_bottom_nav
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -50,6 +51,197 @@ def carregar_acessorios_da_peca(conn, peca_id):
     """, (peca_id,)).fetchall()
 
 
+def carregar_filamentos_da_peca(conn, peca_id):
+    return conn.execute("""
+    SELECT
+        pf.id,
+        f.id,
+        f.codigo,
+        f.nome,
+        f.material,
+        f.cor,
+        f.custo_grama,
+        pf.peso_g,
+        pf.observacao
+    FROM peca_filamentos pf
+    LEFT JOIN filamentos f ON pf.filamento_id = f.id
+    WHERE pf.peca_id = ?
+    ORDER BY pf.id ASC
+    """, (peca_id,)).fetchall()
+
+
+def salvar_filamentos_da_peca(conn, peca_id, filamentos_selecionados):
+    conn.execute("DELETE FROM peca_filamentos WHERE peca_id = ?", (peca_id,))
+
+    for filamento_id, custo_grama, peso_g, observacao in filamentos_selecionados:
+        if filamento_id and peso_g and peso_g > 0:
+            conn.execute("""
+            INSERT INTO peca_filamentos
+            (
+                peca_id,
+                filamento_id,
+                peso_g,
+                observacao
+            )
+            VALUES (?, ?, ?, ?)
+            """, (
+                peca_id,
+                filamento_id,
+                peso_g,
+                observacao
+            ))
+
+
+def montar_filamentos_lote(prefixo, filamentos_disponiveis, registros_existentes=None):
+    registros_existentes = registros_existentes or []
+
+    if not filamentos_disponiveis:
+        return []
+
+    if f"{prefixo}_qtd_filamentos" not in st.session_state:
+        st.session_state[f"{prefixo}_qtd_filamentos"] = max(1, len(registros_existentes))
+
+    filamento_opcoes = {
+        f"{f[1]} - {f[2]} ({f[3]} {f[4]})": f
+        for f in filamentos_disponiveis
+    }
+
+    labels = list(filamento_opcoes.keys())
+    filamentos_lote = []
+
+    for idx in range(st.session_state[f"{prefixo}_qtd_filamentos"]):
+        existente = registros_existentes[idx] if idx < len(registros_existentes) else None
+
+        index_padrao = 0
+        peso_padrao = 0.0
+        observacao_padrao = "Principal" if idx == 0 else "Adicional"
+
+        if existente:
+            existente_filamento_id = existente[1]
+            peso_padrao = float(existente[7] if existente[7] else 0)
+            observacao_padrao = existente[8] if existente[8] else observacao_padrao
+
+            for label_idx, label in enumerate(labels):
+                if filamento_opcoes[label][0] == existente_filamento_id:
+                    index_padrao = label_idx
+                    break
+
+        col_f1, col_f2, col_f3 = st.columns([2.2, 1, 1])
+
+        with col_f1:
+            filamento_label = st.selectbox(
+                f"Filamento {idx + 1}",
+                labels,
+                index=index_padrao,
+                key=f"{prefixo}_filamento_{idx}"
+            )
+
+        with col_f2:
+            peso_filamento = st.number_input(
+                "Peso no lote (g)",
+                min_value=0.0,
+                value=peso_padrao,
+                step=1.0,
+                key=f"{prefixo}_peso_filamento_{idx}"
+            )
+
+        with col_f3:
+            observacao_filamento = st.text_input(
+                "Uso / cor",
+                value=observacao_padrao,
+                placeholder="Ex.: base, detalhe azul",
+                key=f"{prefixo}_obs_filamento_{idx}"
+            )
+
+        filamento = filamento_opcoes[filamento_label]
+        filamentos_lote.append((
+            filamento[0],
+            filamento[5] if filamento[5] else 0,
+            peso_filamento,
+            observacao_filamento
+        ))
+
+    if secondary_button("+ Adicionar mais um filamento", f"{prefixo}_add_filamento"):
+        st.session_state[f"{prefixo}_qtd_filamentos"] += 1
+        st.rerun()
+
+    return filamentos_lote
+
+
+def montar_registros_filamentos_existentes(filamentos_registrados, filamento_id_padrao, peso_total_padrao, filamentos_disponiveis):
+    if filamentos_registrados:
+        return filamentos_registrados
+
+    for f in filamentos_disponiveis:
+        if f[0] == filamento_id_padrao:
+            return [
+                (
+                    None,
+                    f[0],
+                    f[1],
+                    f[2],
+                    f[3],
+                    f[4],
+                    f[5] if len(f) > 5 else 0,
+                    peso_total_padrao,
+                    "Principal"
+                )
+            ]
+
+    return []
+
+
+def resumo_filamentos_lote(filamentos_lote):
+    total_peso = sum(f[2] if f[2] else 0 for f in filamentos_lote)
+    total_custo = sum((f[1] if f[1] else 0) * (f[2] if f[2] else 0) for f in filamentos_lote)
+    return total_peso, total_custo
+
+
+def carregar_categorias_pecas(conn):
+    categorias = conn.execute("""
+    SELECT nome
+    FROM categorias_pecas
+    ORDER BY nome ASC
+    """).fetchall()
+
+    return [c[0] for c in categorias]
+
+
+def salvar_categoria_se_nova(conn, categoria):
+    categoria = (categoria or "").strip()
+
+    if categoria:
+        conn.execute(
+            "INSERT OR IGNORE INTO categorias_pecas (nome) VALUES (?)",
+            (categoria,)
+        )
+
+    return categoria
+
+
+def carregar_pedidos_da_peca(peca_id):
+    conn = conectar()
+
+    pedidos = conn.execute("""
+    SELECT
+        ped.codigo,
+        c.nome,
+        ped.quantidade,
+        ped.valor_unitario,
+        ped.desconto,
+        ped.frete,
+        ped.status,
+        ped.data_pedido
+    FROM pedidos ped
+    LEFT JOIN clientes c ON ped.cliente_id = c.id
+    WHERE ped.peca_id = ?
+    ORDER BY ped.id DESC
+    """, (peca_id,)).fetchall()
+
+    conn.close()
+    return pedidos
+
+
 def calcular_custos(
     peso_g,
     tempo_impressao_h,
@@ -60,13 +252,18 @@ def calcular_custos(
     depreciacao_hora,
     margem_padrao,
     meta_lucro_hora,
-    quantidade_lote=1
+    quantidade_lote=1,
+    filamentos_lote=None
 ):
     quantidade = int(quantidade_lote) if quantidade_lote else 1
     if quantidade <= 0:
         quantidade = 1
 
-    custo_material = peso_g * custo_grama
+    if filamentos_lote:
+        peso_g = sum(f[2] if f[2] else 0 for f in filamentos_lote)
+        custo_material = sum((f[1] if f[1] else 0) * (f[2] if f[2] else 0) for f in filamentos_lote)
+    else:
+        custo_material = peso_g * custo_grama
     custo_energia = tempo_impressao_h * energia_hora
     custo_depreciacao = tempo_impressao_h * depreciacao_hora
     custo_acessorios = sum(valor * qtd for _, valor, qtd in acessorios_selecionados)
@@ -210,6 +407,32 @@ def duplicar_peca(peca_id):
             acessorio[1]
         ))
 
+    filamentos_peca = conn.execute("""
+    SELECT
+        filamento_id,
+        peso_g,
+        observacao
+    FROM peca_filamentos
+    WHERE peca_id = ?
+    """, (peca_id,)).fetchall()
+
+    for filamento in filamentos_peca:
+        conn.execute("""
+        INSERT INTO peca_filamentos
+        (
+            peca_id,
+            filamento_id,
+            peso_g,
+            observacao
+        )
+        VALUES (?, ?, ?, ?)
+        """, (
+            nova_peca_id,
+            filamento[0],
+            filamento[1],
+            filamento[2]
+        ))
+
     conn.commit()
     conn.close()
 
@@ -221,6 +444,11 @@ def excluir_peca(peca_id):
 
     conn.execute(
         "DELETE FROM peca_acessorios WHERE peca_id = ?",
+        (peca_id,)
+    )
+
+    conn.execute(
+        "DELETE FROM peca_filamentos WHERE peca_id = ?",
         (peca_id,)
     )
 
@@ -257,6 +485,7 @@ def editar_peca_modal(peca_id_edit):
     """, (peca_id_edit,)).fetchone()
 
     acessorios_edit = carregar_acessorios_da_peca(conn, peca_id_edit)
+    filamentos_edit = carregar_filamentos_da_peca(conn, peca_id_edit)
     conn.close()
 
     if peca_edit is None:
@@ -280,43 +509,29 @@ def editar_peca_modal(peca_id_edit):
 
         nome_edit = st.text_input("Nome da Peça", value=peca_edit[1], key=f"modal_edit_nome_{peca_id_edit}")
 
-        categorias_lista = [
-            "Chaveiro",
-            "Decoração",
-            "Organizador",
-            "Suporte",
-            "Brinquedo",
-            "Outro"
-        ]
+        categorias_lista = categorias_pecas if categorias_pecas else ["Outro"]
 
-        categoria_edit = st.selectbox(
+        if peca_edit[2] and peca_edit[2] not in categorias_lista:
+            categorias_lista = categorias_lista + [peca_edit[2]]
+
+        opcoes_categoria_edit = categorias_lista + ["+ Adicionar nova categoria"]
+
+        categoria_opcao_edit = st.selectbox(
             "Categoria",
-            categorias_lista,
-            index=categorias_lista.index(peca_edit[2]) if peca_edit[2] in categorias_lista else 5,
+            opcoes_categoria_edit,
+            index=opcoes_categoria_edit.index(peca_edit[2]) if peca_edit[2] in opcoes_categoria_edit else 0,
             key=f"modal_edit_categoria_{peca_id_edit}"
         )
 
-        filamento_opcoes_edit = {
-            f"{f[1]} - {f[2]} ({f[3]} {f[4]})": f
-            for f in filamentos_todos
-        }
-
-        filamento_keys_edit = list(filamento_opcoes_edit.keys())
-        index_filamento_edit = 0
-
-        for idx, item in enumerate(filamento_keys_edit):
-            if filamento_opcoes_edit[item][0] == peca_edit[6]:
-                index_filamento_edit = idx
-                break
-
-        filamento_selecionado_edit = st.selectbox(
-            "Filamento padrão",
-            filamento_keys_edit,
-            index=index_filamento_edit,
-            key=f"modal_edit_filamento_{peca_id_edit}"
-        )
-
-        filamento_dados_edit = filamento_opcoes_edit[filamento_selecionado_edit]
+        if categoria_opcao_edit == "+ Adicionar nova categoria":
+            categoria_edit = st.text_input(
+                "Nova categoria",
+                value="",
+                placeholder="Ex.: Religião",
+                key=f"modal_edit_nova_categoria_{peca_id_edit}"
+            ).strip()
+        else:
+            categoria_edit = categoria_opcao_edit
 
         quantidade_lote_edit = st.number_input(
             "Quantidade produzida no lote",
@@ -326,12 +541,33 @@ def editar_peca_modal(peca_id_edit):
             key=f"modal_edit_quantidade_{peca_id_edit}"
         )
 
-        peso_edit = st.number_input(
-            "Peso total do lote (g)",
-            min_value=0.0,
-            value=float(peca_edit[3]) if peca_edit[3] else 0.0,
-            step=1.0,
-            key=f"modal_edit_peso_{peca_id_edit}"
+        small_section("Filamentos e cores do lote")
+        st.caption("Informe o peso total de cada cor/material usado no lote completo.")
+
+        registros_filamentos_edit = montar_registros_filamentos_existentes(
+            filamentos_edit,
+            peca_edit[6],
+            float(peca_edit[3]) if peca_edit[3] else 0.0,
+            filamentos_todos
+        )
+
+        filamentos_lote_edit = montar_filamentos_lote(
+            f"modal_edit_peca_{peca_id_edit}",
+            filamentos_todos,
+            registros_filamentos_edit
+        )
+
+        peso_edit, custo_material_edit = resumo_filamentos_lote(filamentos_lote_edit)
+
+        st.info(
+            f"Peso total calculado do lote: {peso_edit:.1f} g | "
+            f"Custo de material: {moeda(custo_material_edit)}"
+        )
+
+        filamento_principal_id_edit = (
+            filamentos_lote_edit[0][0]
+            if filamentos_lote_edit
+            else peca_edit[6]
         )
 
         tempo_edit = st.number_input(
@@ -419,13 +655,14 @@ def editar_peca_modal(peca_id_edit):
         peso_edit,
         tempo_edit,
         embalagem_edit,
-        filamento_dados_edit[5],
+        0,
         acessorios_selecionados_edit,
         energia_hora,
         depreciacao_hora,
         margem_padrao,
         meta_lucro_hora,
-        quantidade_lote_edit
+        quantidade_lote_edit,
+        filamentos_lote_edit
     )
 
     with col_resumo_edit:
@@ -457,6 +694,7 @@ def editar_peca_modal(peca_id_edit):
             st.warning("Informe o nome da peça.")
         else:
             conn = conectar()
+            categoria_edit = salvar_categoria_se_nova(conn, categoria_edit)
 
             conn.execute("""
             UPDATE pecas
@@ -481,7 +719,7 @@ def editar_peca_modal(peca_id_edit):
                 peso_edit,
                 tempo_edit,
                 tempo_pos_edit,
-                filamento_dados_edit[0],
+                filamento_principal_id_edit,
                 embalagem_edit,
                 link_stl_edit,
                 link_modelo_edit,
@@ -490,6 +728,12 @@ def editar_peca_modal(peca_id_edit):
                 quantidade_lote_edit,
                 peca_id_edit
             ))
+
+            salvar_filamentos_da_peca(
+                conn,
+                peca_id_edit,
+                filamentos_lote_edit
+            )
 
             conn.execute(
                 "DELETE FROM peca_acessorios WHERE peca_id = ?",
@@ -526,6 +770,7 @@ require_login()
 
 inicializar_banco()
 sidebar()
+mobile_bottom_nav("pecas")
 header("Peças", "Biblioteca de modelos e cálculo de rentabilidade")
 
 
@@ -581,6 +826,8 @@ FROM acessorios
 ORDER BY nome ASC
 """).fetchall()
 
+categorias_pecas = carregar_categorias_pecas(conn)
+
 pecas_base = conn.execute("""
 SELECT
     p.id,
@@ -610,11 +857,17 @@ soma_custo_unitario = 0
 for p in pecas_base:
     conn = conectar()
     acessorios_peca = carregar_acessorios_da_peca(conn, p[0])
+    filamentos_peca = carregar_filamentos_da_peca(conn, p[0])
     conn.close()
 
     acessorios_calc = [
         (a[0], a[2] if a[2] else 0, a[3] if a[3] else 0)
         for a in acessorios_peca
+    ]
+
+    filamentos_calc = [
+        (f[1], f[6] if f[6] else 0, f[7] if f[7] else 0, f[8] if f[8] else "")
+        for f in filamentos_peca
     ]
 
     custos = calcular_custos(
@@ -627,7 +880,8 @@ for p in pecas_base:
         depreciacao_hora,
         margem_padrao,
         meta_lucro_hora,
-        p[7] if p[7] else 1
+        p[7] if p[7] else 1,
+        filamentos_calc
     )
 
     soma_lucro_hora += custos["lucro_hora"]
@@ -690,31 +944,22 @@ if st.session_state["mostrar_form_peca"]:
 
             nome = st.text_input("Nome da Peça", key="nova_peca_nome")
 
-            categoria = st.selectbox(
+            opcoes_categoria = (categorias_pecas if categorias_pecas else ["Outro"]) + ["+ Adicionar nova categoria"]
+
+            categoria_opcao = st.selectbox(
                 "Categoria",
-                [
-                    "Chaveiro",
-                    "Decoração",
-                    "Organizador",
-                    "Suporte",
-                    "Brinquedo",
-                    "Outro"
-                ],
+                opcoes_categoria,
                 key="nova_peca_categoria"
             )
 
-            filamento_opcoes = {
-                f"{f[1]} - {f[2]} ({f[3]} {f[4]})": f
-                for f in filamentos
-            }
-
-            filamento_selecionado = st.selectbox(
-                "Filamento padrão",
-                list(filamento_opcoes.keys()),
-                key="nova_peca_filamento"
-            )
-
-            filamento_dados = filamento_opcoes[filamento_selecionado]
+            if categoria_opcao == "+ Adicionar nova categoria":
+                categoria = st.text_input(
+                    "Nova categoria",
+                    placeholder="Ex.: Religião",
+                    key="nova_peca_categoria_nova"
+                ).strip()
+            else:
+                categoria = categoria_opcao
 
             quantidade_lote = st.number_input(
                 "Quantidade produzida no lote",
@@ -724,12 +969,25 @@ if st.session_state["mostrar_form_peca"]:
                 key="nova_peca_quantidade"
             )
 
-            peso_g = st.number_input(
-                "Peso total do lote (g)",
-                min_value=0.0,
-                value=0.0,
-                step=1.0,
-                key="nova_peca_peso"
+            small_section("Filamentos e cores do lote")
+            st.caption("Informe o peso total de cada cor/material usado no lote completo.")
+
+            filamentos_lote = montar_filamentos_lote(
+                "nova_peca",
+                filamentos
+            )
+
+            peso_g, custo_material_lote = resumo_filamentos_lote(filamentos_lote)
+
+            st.info(
+                f"Peso total calculado do lote: {peso_g:.1f} g | "
+                f"Custo de material: {moeda(custo_material_lote)}"
+            )
+
+            filamento_principal_id = (
+                filamentos_lote[0][0]
+                if filamentos_lote
+                else filamentos[0][0]
             )
 
             tempo_impressao_h = st.number_input(
@@ -789,13 +1047,14 @@ if st.session_state["mostrar_form_peca"]:
             peso_g,
             tempo_impressao_h,
             embalagem_custo,
-            filamento_dados[5],
+            0,
             acessorios_selecionados,
             energia_hora,
             depreciacao_hora,
             margem_padrao,
             meta_lucro_hora,
-            quantidade_lote
+            quantidade_lote,
+            filamentos_lote
         )
 
         with col_resumo:
@@ -826,6 +1085,7 @@ if st.session_state["mostrar_form_peca"]:
 
             else:
                 conn = conectar()
+                categoria = salvar_categoria_se_nova(conn, categoria)
                 codigo = gerar_codigo_peca(conn)
 
                 cursor = conn.cursor()
@@ -856,7 +1116,7 @@ if st.session_state["mostrar_form_peca"]:
                     peso_g,
                     tempo_impressao_h,
                     tempo_pos,
-                    filamento_dados[0],
+                    filamento_principal_id,
                     embalagem_custo,
                     link_stl,
                     link_modelo,
@@ -866,6 +1126,12 @@ if st.session_state["mostrar_form_peca"]:
                 ))
 
                 peca_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+                salvar_filamentos_da_peca(
+                    conn,
+                    peca_id,
+                    filamentos_lote
+                )
 
                 for acessorio_id, _, quantidade in acessorios_selecionados:
                     cursor.execute("""
@@ -888,6 +1154,7 @@ if st.session_state["mostrar_form_peca"]:
 
                 st.success("Peça cadastrada com sucesso!")
                 st.session_state["mostrar_form_peca"] = False
+                st.session_state.pop("nova_peca_qtd_filamentos", None)
                 st.rerun()
 
 
@@ -963,11 +1230,17 @@ for p in pecas:
 
     conn = conectar()
     acessorios_peca = carregar_acessorios_da_peca(conn, peca_id)
+    filamentos_peca = carregar_filamentos_da_peca(conn, peca_id)
     conn.close()
 
     acessorios_calc = [
         (a[0], a[2] if a[2] else 0, a[3] if a[3] else 0)
         for a in acessorios_peca
+    ]
+
+    filamentos_calc = [
+        (f[1], f[6] if f[6] else 0, f[7] if f[7] else 0, f[8] if f[8] else "")
+        for f in filamentos_peca
     ]
 
     custos = calcular_custos(
@@ -980,15 +1253,25 @@ for p in pecas:
         depreciacao_hora,
         margem_padrao,
         meta_lucro_hora,
-        quantidade_lote
+        quantidade_lote,
+        filamentos_calc
     )
 
     with st.container(border=True):
 
+        if filamentos_peca:
+            filamento_resumo = (
+                f"{len(filamentos_peca)} filamentos / cores"
+                if len(filamentos_peca) > 1
+                else f"{filamentos_peca[0][2]} - {filamentos_peca[0][3]}"
+            )
+        else:
+            filamento_resumo = f"{filamento_codigo} - {filamento_nome}"
+
         item_card(
             codigo=codigo,
             titulo=nome,
-            subtitulo=f"{categoria} • {quantidade_lote} un • {filamento_codigo} - {filamento_nome}",
+            subtitulo=f"{categoria} • {quantidade_lote} un • {filamento_resumo}",
             cor=custos["cor"]
         )
 
@@ -1006,7 +1289,7 @@ for p in pecas:
 
             with col_d3:
                 st.write(f"**Tempo lote:** {tempo_impressao:.2f} h")
-                st.write(f"**Filamento:** {filamento_codigo}")
+                st.write(f"**Filamentos:** {filamento_resumo}")
 
             with col_d4:
                 st.write(f"**Preço unit.:** {moeda(custos['preco_unitario'])}")
@@ -1060,6 +1343,72 @@ for p in pecas:
 
             with col_lp3:
                 st.write(f"**Lucro %:** {custos['lucro_percentual']:.0f}%")
+
+            if filamentos_peca:
+                small_section("Filamentos e cores do lote")
+
+                for f in filamentos_peca:
+                    peso_filamento = f[7] if f[7] else 0
+                    custo_grama_filamento = f[6] if f[6] else 0
+                    custo_filamento = peso_filamento * custo_grama_filamento
+                    observacao_filamento = f[8] if f[8] else "-"
+
+                    st.write(
+                        f"- **{f[2]} - {f[3]}** | {f[4]} {f[5]} | "
+                        f"{peso_filamento:.1f} g | {observacao_filamento} | "
+                        f"Custo: {moeda(custo_filamento)}"
+                    )
+
+            pedidos_peca = carregar_pedidos_da_peca(peca_id)
+
+            small_section("Pedidos desta peça")
+
+            if pedidos_peca:
+                qtd_vendida = 0
+                faturamento_peca = 0
+                lucro_peca = 0
+
+                for pedido_peca in pedidos_peca:
+                    qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
+                    valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
+                    desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
+                    frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
+                    status_pedido = pedido_peca[6] if pedido_peca[6] else "Orçamento"
+                    total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
+                    lucro_pedido_peca = total_pedido_peca - (qtd_pedido * custos["custo_unitario"])
+
+                    if status_pedido != "Cancelado":
+                        qtd_vendida += qtd_pedido
+                        faturamento_peca += total_pedido_peca
+                        lucro_peca += lucro_pedido_peca
+
+                col_ped1, col_ped2, col_ped3, col_ped4 = st.columns(4)
+
+                with col_ped1:
+                    st.write(f"**Pedidos:** {len(pedidos_peca)}")
+
+                with col_ped2:
+                    st.write(f"**Qtd. vendida:** {qtd_vendida:.0f}")
+
+                with col_ped3:
+                    st.write(f"**Faturamento:** {moeda(faturamento_peca)}")
+
+                with col_ped4:
+                    st.write(f"**Lucro:** {moeda(lucro_peca)}")
+
+                for pedido_peca in pedidos_peca[:5]:
+                    qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
+                    valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
+                    desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
+                    frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
+                    total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
+
+                    st.write(
+                        f"- **{pedido_peca[0]}** | {pedido_peca[1] or '-'} | "
+                        f"{qtd_pedido:.0f} un | {pedido_peca[6]} | {moeda(total_pedido_peca)}"
+                    )
+            else:
+                st.caption("Ainda não existem pedidos para esta peça.")
 
             if acessorios_peca:
                 small_section("Acessórios usados no lote")

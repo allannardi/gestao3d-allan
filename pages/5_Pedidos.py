@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import date
 
 from components.sidebar import sidebar
+from components.mobile_nav import mobile_bottom_nav
 from components.header import header
 from components.kpi import kpi_card
 from components.card import item_card
@@ -164,6 +165,23 @@ def carregar_acessorios_da_peca(conn, peca_id):
     """, (peca_id,)).fetchall()
 
 
+def carregar_filamentos_da_peca(conn, peca_id):
+    return conn.execute("""
+    SELECT
+        f.codigo,
+        f.nome,
+        f.material,
+        f.cor,
+        f.custo_grama,
+        pf.peso_g,
+        pf.observacao
+    FROM peca_filamentos pf
+    LEFT JOIN filamentos f ON pf.filamento_id = f.id
+    WHERE pf.peca_id = ?
+    ORDER BY pf.id ASC
+    """, (peca_id,)).fetchall()
+
+
 def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
     conn = conectar()
 
@@ -190,6 +208,7 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
         }
 
     acessorios = carregar_acessorios_da_peca(conn, peca_id)
+    filamentos_peca = carregar_filamentos_da_peca(conn, peca_id)
     conn.close()
 
     peso_g = peca[0] if peca[0] else 0
@@ -198,7 +217,12 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
     quantidade_lote = peca[3] if peca[3] and peca[3] > 0 else 1
     custo_grama = peca[4] if peca[4] else 0
 
-    custo_material = peso_g * custo_grama
+    if filamentos_peca:
+        peso_g = sum((f[5] if f[5] else 0) for f in filamentos_peca)
+        custo_material = sum((f[4] if f[4] else 0) * (f[5] if f[5] else 0) for f in filamentos_peca)
+    else:
+        custo_material = peso_g * custo_grama
+
     custo_energia = tempo_h * energia_hora
     custo_depreciacao = tempo_h * depreciacao_hora
     custo_acessorios = sum((a[2] if a[2] else 0) * (a[3] if a[3] else 0) for a in acessorios)
@@ -255,6 +279,84 @@ def cor_status(status):
     if status == "Cancelado":
         return "red"
     return "gray"
+
+
+def cor_status_hex(status):
+    mapa = {
+        "Orçamento": "#B85C20",
+        "Confirmado": "#0C65AA",
+        "Em Produção": "#100690",
+        "Pronto": "#1F8A4C",
+        "Entregue": "#1F8A4C",
+        "Cancelado": "#D11A2A",
+    }
+    return mapa.get(status, "#8A8F98")
+
+
+def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status, total):
+    cor = cor_status_hex(status)
+    st.markdown(
+        f"""
+        <div style="border:1px solid #DEE9EF;border-top:4px solid {cor};border-radius:14px;background:#FFFFFF;padding:14px 16px;margin-bottom:4px;font-family:'Barlow', system-ui, sans-serif;">
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:26px;font-weight:800;color:#0A1A5C;line-height:1;">{codigo}</div>
+                    <div style="margin-top:6px;font-size:12px;color:#5C6C74;font-weight:600;">{cliente_nome}</div>
+                </div>
+                <div style="text-align:left; flex:1; min-width:260px;">
+                    <div style="font-size:17px;font-weight:800;color:#1E3137;line-height:1.2;">{peca_nome}</div>
+                    <div style="margin-top:5px;font-size:12px;color:#5C6C74;font-weight:600;">{peca_codigo}</div>
+                </div>
+                <div style="text-align:center; min-width:82px;">
+                    <div style="font-size:24px;font-weight:800;color:#0C65AA;line-height:1;">{quantidade:.0f}x</div>
+                    <div style="font-size:11px;color:#5C6C74;font-weight:600;margin-top:4px;">quantidade</div>
+                </div>
+                <div style="text-align:right; min-width:130px;">
+                    <div style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:{cor}18;color:{cor};font-size:12px;font-weight:800;">
+                        <span style="width:9px;height:9px;border-radius:50%;background:{cor};display:inline-block;"></span>{status}
+                    </div>
+                    <div style="margin-top:10px;font-size:15px;color:#1E3137;font-weight:800;">{moeda(total)}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def carregar_filamentos_ativos():
+    conn = conectar()
+    filamentos = conn.execute("""
+    SELECT id, codigo, nome, material, cor
+    FROM filamentos
+    WHERE status IS NULL OR status = 'Ativo'
+    ORDER BY nome ASC
+    """).fetchall()
+    conn.close()
+    return filamentos
+
+
+def salvar_filamentos_pedido(conn, pedido_id, filamentos_pedido):
+    conn.execute("DELETE FROM pedido_filamentos WHERE pedido_id = ?", (pedido_id,))
+    for filamento_id, observacao in filamentos_pedido:
+        if filamento_id:
+            conn.execute("""
+            INSERT INTO pedido_filamentos (pedido_id, filamento_id, observacao)
+            VALUES (?, ?, ?)
+            """, (pedido_id, filamento_id, observacao))
+
+
+def carregar_filamentos_pedido(pedido_id):
+    conn = conectar()
+    filamentos = conn.execute("""
+    SELECT f.codigo, f.nome, f.material, f.cor, pf.observacao
+    FROM pedido_filamentos pf
+    LEFT JOIN filamentos f ON pf.filamento_id = f.id
+    WHERE pf.pedido_id = ?
+    ORDER BY pf.id ASC
+    """, (pedido_id,)).fetchall()
+    conn.close()
+    return filamentos
 
 
 def duplicar_pedido(pedido_id):
@@ -320,6 +422,98 @@ def duplicar_pedido(pedido_id):
     conn.close()
 
     return novo_id
+
+
+@st.dialog("Duplicar Pedido", width="large")
+def duplicar_pedido_dialog(pedido_id):
+    conn = conectar()
+    pedido = conn.execute("""
+    SELECT cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, canal, data_entrega_prevista, observacoes
+    FROM pedidos
+    WHERE id = ?
+    """, (pedido_id,)).fetchone()
+    conn.close()
+
+    if pedido is None:
+        st.warning("Pedido não encontrado.")
+        return
+
+    st.caption("Escolha se o pedido duplicado será para o mesmo cliente, outro cliente ou um novo cliente.")
+    clientes_atualizados = carregar_clientes()
+    modo_cliente = st.radio(
+        "Cliente do novo pedido",
+        ["Mesmo cliente", "Selecionar outro cliente", "Cadastrar novo cliente"],
+        horizontal=True,
+        key=f"duplicar_modo_cliente_{pedido_id}"
+    )
+
+    cliente_id_para_salvar = pedido[0]
+    novo_cliente_nome = ""
+    novo_cliente_tipo = "Pessoa Física"
+    novo_cliente_telefone = ""
+    novo_cliente_email = ""
+    novo_cliente_cidade = ""
+    novo_cliente_estado = ""
+    novo_cliente_origem = "WhatsApp"
+
+    if modo_cliente == "Selecionar outro cliente":
+        if not clientes_atualizados:
+            st.warning("Não há clientes ativos cadastrados.")
+        else:
+            clientes_opcoes = {f"{c[1]} - {c[2]}": c for c in clientes_atualizados}
+            cliente_label = st.selectbox("Cliente", list(clientes_opcoes.keys()), key=f"duplicar_cliente_existente_{pedido_id}")
+            cliente_id_para_salvar = clientes_opcoes[cliente_label][0]
+
+    if modo_cliente == "Cadastrar novo cliente":
+        with st.container(border=True):
+            small_section("Novo cliente rápido")
+            novo_cliente_nome = st.text_input("Nome do cliente", key=f"duplicar_novo_cliente_nome_{pedido_id}")
+            novo_cliente_tipo = st.selectbox("Tipo", ["Pessoa Física", "Pessoa Jurídica"], key=f"duplicar_novo_cliente_tipo_{pedido_id}")
+            col_nc1, col_nc2 = st.columns(2)
+            with col_nc1:
+                novo_cliente_telefone = st.text_input("Telefone / WhatsApp", key=f"duplicar_novo_cliente_tel_{pedido_id}")
+                novo_cliente_cidade = st.text_input("Cidade", key=f"duplicar_novo_cliente_cidade_{pedido_id}")
+            with col_nc2:
+                novo_cliente_email = st.text_input("E-mail", key=f"duplicar_novo_cliente_email_{pedido_id}")
+                novo_cliente_estado = st.text_input("Estado", key=f"duplicar_novo_cliente_estado_{pedido_id}")
+            novo_cliente_origem = st.selectbox(
+                "Origem",
+                ["Indicação", "Instagram", "WhatsApp", "Marketplace", "Feira / Evento", "Cliente recorrente", "Outro"],
+                index=2,
+                key=f"duplicar_novo_cliente_origem_{pedido_id}"
+            )
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        confirmar = primary_button("Criar pedido duplicado", f"confirmar_duplicar_pedido_{pedido_id}")
+    with col_b:
+        cancelar = secondary_button("Cancelar", f"cancelar_duplicar_pedido_{pedido_id}")
+
+    if cancelar:
+        st.rerun()
+    if confirmar:
+        if modo_cliente == "Cadastrar novo cliente" and not novo_cliente_nome:
+            st.warning("Informe o nome do novo cliente.")
+            return
+        conn = conectar()
+        if modo_cliente == "Cadastrar novo cliente":
+            codigo_cliente = gerar_codigo_cliente(conn)
+            conn.execute("""
+            INSERT INTO clientes (codigo, nome, tipo, telefone, email, cidade, estado, origem, status, data_cadastro)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (codigo_cliente, novo_cliente_nome, novo_cliente_tipo, novo_cliente_telefone, novo_cliente_email, novo_cliente_cidade, novo_cliente_estado, novo_cliente_origem, "Ativo", str(date.today())))
+            cliente_id_para_salvar = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        codigo = gerar_codigo_pedido(conn)
+        conn.execute("""
+        INSERT INTO pedidos (codigo, cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, status, canal, data_pedido, data_entrega_prevista, observacoes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (codigo, cliente_id_para_salvar, pedido[1], pedido[2], pedido[3], pedido[4], pedido[5], "Orçamento", pedido[6], str(date.today()), pedido[7], pedido[8]))
+        novo_pedido_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.commit()
+        conn.close()
+        st.success("Pedido duplicado com sucesso!")
+        st.rerun()
 
 
 @st.dialog("Editar Pedido", width="large")
@@ -530,6 +724,7 @@ require_login()
 
 inicializar_banco()
 sidebar()
+mobile_bottom_nav("pedidos")
 header("Pedidos", "Cadastro e acompanhamento dos pedidos do Ateliê")
 
 
@@ -951,11 +1146,14 @@ for pedido in pedidos:
 
     with st.container(border=True):
 
-        item_card(
+        pedido_card(
             codigo=codigo,
-            titulo=f"{cliente_nome}",
-            subtitulo=f"{quantidade:.0f}x {peca_codigo} - {peca_nome} • {status}",
-            cor=cor_status(status),
+            cliente_nome=cliente_nome,
+            peca_codigo=peca_codigo,
+            peca_nome=peca_nome,
+            quantidade=quantidade,
+            status=status,
+            total=calc["total"],
         )
 
         with st.expander("Detalhes, valores e ações"):
@@ -977,6 +1175,22 @@ for pedido in pedidos:
             with col_d4:
                 st.write(f"**Data pedido:** {data_pedido}")
                 st.write(f"**Entrega:** {data_entrega}")
+
+            conn_fil = conectar()
+            filamentos_peca_detalhe = carregar_filamentos_da_peca(conn_fil, peca_id)
+            conn_fil.close()
+
+            if filamentos_peca_detalhe:
+                small_section("Filamentos / cores da peça")
+
+                for filamento in filamentos_peca_detalhe:
+                    peso_filamento = filamento[5] if filamento[5] else 0
+                    observacao_filamento = filamento[6] if filamento[6] else "-"
+                    st.write(
+                        f"- **{filamento[0]} - {filamento[1]}** | "
+                        f"{filamento[2]} {filamento[3]} | "
+                        f"{peso_filamento:.1f} g | {observacao_filamento}"
+                    )
 
             small_section("Dados unitários da peça")
 
@@ -1071,13 +1285,7 @@ for pedido in pedidos:
 
             with col_btn2:
                 if secondary_button("Duplicar", f"duplicar_pedido_{pedido_id}"):
-                    novo_id = duplicar_pedido(pedido_id)
-
-                    if novo_id:
-                        st.success("Pedido duplicado com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("Não foi possível duplicar este pedido.")
+                    duplicar_pedido_dialog(pedido_id)
 
             with col_btn3:
                 if danger_button("Excluir", f"excluir_pedido_{pedido_id}"):

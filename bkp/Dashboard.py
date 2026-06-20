@@ -1,16 +1,13 @@
 import streamlit as st
-import pandas as pd
+import sqlite3
 from html import escape
 from collections import defaultdict
-from datetime import date, datetime
 
-from database import conectar, inicializar_banco
+from database import criar_banco, inserir_configuracao_padrao
 from components.sidebar import sidebar
-from components.mobile_nav import mobile_bottom_nav
 from components.header import header
 from components.kpi import kpi_card
 from components.section import section_title
-from components.auth import require_login
 
 
 st.set_page_config(
@@ -24,64 +21,13 @@ st.set_page_config(
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-require_login()
 
-inicializar_banco()
+def conectar():
+    return sqlite3.connect("database/atelie.db")
 
 
 def moeda(valor):
     return f"R$ {valor:.2f}".replace(".", ",")
-
-
-def data_para_date(valor):
-    if not valor:
-        return None
-    try:
-        return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def cor_status_hex(status):
-    mapa = {
-        "Orçamento": "#B85C20",
-        "Confirmado": "#0C65AA",
-        "Em Produção": "#100690",
-        "Pronto": "#1F8A4C",
-        "Entregue": "#1F8A4C",
-        "Cancelado": "#D11A2A",
-    }
-    return mapa.get(status, "#8A8F98")
-
-
-def render_status_visual(status_resumo, status_ordem):
-    total_status = sum(dados["pedidos"] for dados in status_resumo.values())
-    if total_status <= 0:
-        st.caption("Nenhum pedido cadastrado ainda.")
-        return
-    for status in status_ordem:
-        dados = status_resumo.get(status)
-        if not dados:
-            continue
-        quantidade = dados["pedidos"]
-        percentual = (quantidade / total_status) * 100 if total_status > 0 else 0
-        cor = cor_status_hex(status)
-        st.markdown(
-            f"""
-            <div style="margin-bottom:12px;font-family:'Barlow', system-ui, sans-serif;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:10px;">
-                    <div style="font-size:13px;font-weight:800;color:#1E3137;display:flex;align-items:center;gap:7px;">
-                        <span style="width:10px;height:10px;border-radius:50%;background:{cor};display:inline-block;"></span>{status}
-                    </div>
-                    <div style="font-size:12px;font-weight:700;color:#5C6C74;">{quantidade:.0f} pedidos · {percentual:.0f}%</div>
-                </div>
-                <div style="height:9px;background:#DEE9EF;border-radius:999px;overflow:hidden;">
-                    <div style="height:9px;width:{percentual:.0f}%;background:{cor};border-radius:999px;"></div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
 
 def garantir_tabelas_dashboard():
@@ -145,18 +91,6 @@ def carregar_acessorios_da_peca(conn, peca_id):
     """, (peca_id,)).fetchall()
 
 
-def carregar_filamentos_da_peca(conn, peca_id):
-    return conn.execute("""
-    SELECT
-        f.custo_grama,
-        pf.peso_g
-    FROM peca_filamentos pf
-    LEFT JOIN filamentos f ON pf.filamento_id = f.id
-    WHERE pf.peca_id = ?
-    ORDER BY pf.id ASC
-    """, (peca_id,)).fetchall()
-
-
 def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
     conn = conectar()
 
@@ -181,7 +115,6 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
         }
 
     acessorios = carregar_acessorios_da_peca(conn, peca_id)
-    filamentos_peca = carregar_filamentos_da_peca(conn, peca_id)
     conn.close()
 
     peso_g = peca[0] if peca[0] else 0
@@ -190,12 +123,7 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
     quantidade_lote = peca[3] if peca[3] and peca[3] > 0 else 1
     custo_grama = peca[4] if peca[4] else 0
 
-    if filamentos_peca:
-        peso_g = sum((f[1] if f[1] else 0) for f in filamentos_peca)
-        custo_material = sum((f[0] if f[0] else 0) * (f[1] if f[1] else 0) for f in filamentos_peca)
-    else:
-        custo_material = peso_g * custo_grama
-
+    custo_material = peso_g * custo_grama
     custo_energia = tempo_h * energia_hora
     custo_depreciacao = tempo_h * depreciacao_hora
     custo_acessorios = sum(
@@ -250,32 +178,6 @@ def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energi
     }
 
 
-def largura_coluna(header):
-    larguras = {
-        "Pedido": "120px",
-        "Cliente": "220px",
-        "Peça": "340px",
-        "Qtd.": "80px",
-        "Status": "130px",
-        "Total": "130px",
-        "Faturamento": "150px",
-        "Lucro": "130px",
-        "Pedidos": "100px",
-    }
-
-    return larguras.get(str(header), "160px")
-
-
-def coluna_numerica(header):
-    return str(header) in [
-        "Qtd.",
-        "Pedidos",
-        "Faturamento",
-        "Lucro",
-        "Total",
-    ]
-
-
 def tabela_html(headers, rows, empty_message):
     if not rows:
         return f"""
@@ -292,15 +194,10 @@ def tabela_html(headers, rows, empty_message):
         </div>
         """
 
-    colgroup = "".join([
-        f'<col style="width:{largura_coluna(header)};">'
-        for header in headers
-    ])
-
     thead = "".join([
         f"""
         <th style="
-            text-align:center;
+            text-align:left;
             padding:12px 14px;
             border-bottom:2px solid #DEE9EF;
             color:#5C6C74;
@@ -310,12 +207,9 @@ def tabela_html(headers, rows, empty_message):
             text-transform:uppercase;
             white-space:nowrap;
             background:#F4F8FB;
-            position:sticky;
-            top:0;
-            z-index:2;
-        ">{escape(str(header))}</th>
+        ">{escape(str(h))}</th>
         """
-        for header in headers
+        for h in headers
     ])
 
     linhas = ""
@@ -324,14 +218,8 @@ def tabela_html(headers, rows, empty_message):
         tds = ""
 
         for idx, value in enumerate(row):
-            header = headers[idx]
-
-            if coluna_numerica(header):
-                align = "center"
-                weight = "700"
-            else:
-                align = "left"
-                weight = "800" if idx == 0 else "500"
+            align = "right" if idx > 0 else "left"
+            weight = "800" if idx == 0 else "500"
 
             tds += f"""
             <td style="
@@ -342,40 +230,24 @@ def tabela_html(headers, rows, empty_message):
                 text-align:{align};
                 white-space:nowrap;
                 font-size:13px;
-                vertical-align:middle;
             ">{escape(str(value))}</td>
             """
 
         linhas += f"<tr>{tds}</tr>"
 
     return f"""
-    <style>
-        .g3d-table-wrap {{
-            border:1px solid #DEE9EF;
-            border-radius:12px;
-            overflow:auto;
-            background:#FFFFFF;
-            font-family:'Barlow', system-ui, sans-serif;
-            width:100%;
-            max-height:360px;
-        }}
-
-        .g3d-table {{
+    <div style="
+        border:1px solid #DEE9EF;
+        border-radius:12px;
+        overflow:hidden;
+        background:#FFFFFF;
+        font-family:'Barlow', system-ui, sans-serif;
+        width:100%;
+    ">
+        <table style="
             border-collapse:collapse;
-            min-width:100%;
-            table-layout:fixed;
-        }}
-
-        .g3d-table tbody tr:hover {{
-            background:#F4F8FB;
-        }}
-    </style>
-
-    <div class="g3d-table-wrap">
-        <table class="g3d-table">
-            <colgroup>
-                {colgroup}
-            </colgroup>
+            width:100%;
+        ">
             <thead>
                 <tr>{thead}</tr>
             </thead>
@@ -393,16 +265,19 @@ def render_tabela(headers, rows, empty_message):
     if not rows:
         altura = 90
     else:
-        altura = min(430, 82 + (len(rows) * 44))
+        altura = 70 + (len(rows) * 44)
 
     st.components.v1.html(
         html,
         height=altura,
-        scrolling=True
+        scrolling=False
     )
 
 
-inicializar_banco()
+criar_banco()
+inserir_configuracao_padrao()
+garantir_tabelas_dashboard()
+
 conn = conectar()
 
 config = conn.execute("""
@@ -456,10 +331,6 @@ faturamento_total = 0
 lucro_total = 0
 horas_total = 0
 quantidade_total = 0
-pedidos_fechados_mes = 0
-faturamento_mes = 0
-lucro_mes = 0
-hoje = date.today()
 
 status_resumo = defaultdict(lambda: {
     "pedidos": 0,
@@ -480,7 +351,6 @@ clientes_resumo = defaultdict(lambda: {
 })
 
 pedidos_recentes = []
-pedidos_abertos_lista = []
 
 for pedido in pedidos:
     codigo = pedido[1]
@@ -494,8 +364,6 @@ for pedido in pedidos:
     desconto = pedido[10] if pedido[10] else 0
     frete = pedido[11] if pedido[11] else 0
     status = pedido[12] if pedido[12] else "Orçamento"
-    data_pedido = pedido[14] if pedido[14] else ""
-    data_pedido_dt = data_para_date(data_pedido)
 
     calc = calcular_pedido(
         peca_id,
@@ -515,12 +383,6 @@ for pedido in pedidos:
         lucro_total += calc["lucro"]
         horas_total += calc["tempo_total"]
         quantidade_total += quantidade
-
-        if data_pedido_dt and data_pedido_dt.month == hoje.month and data_pedido_dt.year == hoje.year:
-            faturamento_mes += calc["total"]
-            lucro_mes += calc["lucro"]
-            if status == "Entregue":
-                pedidos_fechados_mes += 1
 
         pecas_key = f"{peca_codigo} - {peca_nome}"
         pecas_resumo[pecas_key]["quantidade"] += quantidade
@@ -546,15 +408,6 @@ for pedido in pedidos:
             moeda(calc["total"]),
         ])
 
-    if status not in ["Entregue", "Cancelado"] and len(pedidos_abertos_lista) < 8:
-        pedidos_abertos_lista.append([
-            codigo,
-            peca_nome,
-            f"{quantidade:.0f}",
-            status,
-            data_pedido if data_pedido else "-",
-        ])
-
 
 lucro_hora = lucro_total / horas_total if horas_total > 0 else 0
 margem_media = (lucro_total / faturamento_total) * 100 if faturamento_total > 0 else 0
@@ -563,7 +416,6 @@ ticket_medio = faturamento_total / len(pedidos) if len(pedidos) > 0 else 0
 
 sidebar()
 
-mobile_bottom_nav("dashboard")
 header(
     "Dashboard",
     "Visão geral da operação"
@@ -619,7 +471,7 @@ section_title(
 )
 
 
-col_a, col_b, col_c, col_d, col_e = st.columns(5)
+col_a, col_b, col_c, col_d = st.columns(4)
 
 with col_a:
     kpi_card("Clientes", str(total_clientes), "clientes cadastrados", "blue")
@@ -632,9 +484,6 @@ with col_c:
 
 with col_d:
     kpi_card("Ticket médio", moeda(ticket_medio), "por pedido cadastrado", "green")
-
-with col_e:
-    kpi_card("Fechados no mês", str(pedidos_fechados_mes), f"fat. mês {moeda(faturamento_mes)}", "green")
 
 
 section_title(
@@ -656,49 +505,88 @@ with col_r1:
         "Peças mais vendidas",
         "Ranking por quantidade vendida"
     )
-    pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:8]
-    if pecas_ranking:
-        df_pecas = pd.DataFrame({
-            "Peça": [nome for nome, _ in pecas_ranking],
-            "Quantidade": [dados["quantidade"] for _, dados in pecas_ranking],
-        }).set_index("Peça")
-        st.bar_chart(df_pecas, height=320)
-    else:
-        st.caption("Nenhuma peça vendida ainda.")
+
+    pecas_ranking = sorted(
+        pecas_resumo.items(),
+        key=lambda item: item[1]["quantidade"],
+        reverse=True
+    )[:5]
+
+    render_tabela(
+        ["Peça", "Qtd.", "Faturamento", "Lucro"],
+        [
+            [
+                nome,
+                f"{dados['quantidade']:.0f}",
+                moeda(dados["faturamento"]),
+                moeda(dados["lucro"]),
+            ]
+            for nome, dados in pecas_ranking
+        ],
+        "Nenhuma peça vendida ainda."
+    )
 
 with col_r2:
-    section_title(
-        "Pedidos por status",
-        "Distribuição visual dos pedidos"
-    )
-    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
-    render_status_visual(status_resumo, status_ordem)
-
-
-col_a1, col_a2 = st.columns(2)
-
-with col_a1:
-    section_title(
-        "Pedidos abertos por peça",
-        "Lista rápida do que ainda precisa de ação"
-    )
-    render_tabela(
-        ["Pedido", "Peça", "Qtd.", "Status", "Data"],
-        pedidos_abertos_lista,
-        "Nenhum pedido aberto no momento."
-    )
-
-with col_a2:
     section_title(
         "Clientes com mais pedidos",
         "Ranking por número de pedidos"
     )
-    clientes_ranking = sorted(clientes_resumo.items(), key=lambda item: item[1]["pedidos"], reverse=True)[:5]
+
+    clientes_ranking = sorted(
+        clientes_resumo.items(),
+        key=lambda item: item[1]["pedidos"],
+        reverse=True
+    )[:5]
+
     render_tabela(
         ["Cliente", "Pedidos", "Faturamento", "Lucro"],
-        [[nome, f"{dados['pedidos']:.0f}", moeda(dados["faturamento"]), moeda(dados["lucro"])] for nome, dados in clientes_ranking],
+        [
+            [
+                nome,
+                f"{dados['pedidos']:.0f}",
+                moeda(dados["faturamento"]),
+                moeda(dados["lucro"]),
+            ]
+            for nome, dados in clientes_ranking
+        ],
         "Nenhum cliente com pedido cadastrado ainda."
     )
+
+
+section_title(
+    "Pedidos por status",
+    "Distribuição dos pedidos por etapa"
+)
+
+
+status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+
+status_linhas = []
+
+for status in status_ordem:
+    if status in status_resumo:
+        dados = status_resumo[status]
+        status_linhas.append([
+            status,
+            f"{dados['pedidos']:.0f}",
+            moeda(dados["faturamento"]),
+            moeda(dados["lucro"]),
+        ])
+
+for status, dados in status_resumo.items():
+    if status not in status_ordem:
+        status_linhas.append([
+            status,
+            f"{dados['pedidos']:.0f}",
+            moeda(dados["faturamento"]),
+            moeda(dados["lucro"]),
+        ])
+
+render_tabela(
+    ["Status", "Pedidos", "Faturamento", "Lucro"],
+    status_linhas,
+    "Nenhum status encontrado."
+)
 
 
 st.write("")

@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
+SCHEMA_VERSION = "v05_filamentos_na_peca"
 
 
 def _get_secret(section, key, default=None):
@@ -185,6 +186,32 @@ def criar_banco():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS peca_filamentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        peca_id INTEGER,
+        filamento_id INTEGER,
+        peso_g REAL DEFAULT 0,
+        observacao TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS categorias_pecas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT UNIQUE NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pedido_filamentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pedido_id INTEGER,
+        filamento_id INTEGER,
+        observacao TEXT
+    )
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS filamentos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo TEXT,
@@ -262,6 +289,28 @@ def garantir_migracoes():
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
 
 
+def inserir_categorias_pecas_padrao():
+    conn = conectar()
+    categorias = [
+        "Chaveiro",
+        "Decoração",
+        "Organizador",
+        "Suporte",
+        "Brinquedo",
+        "Religião",
+        "Outro",
+    ]
+
+    for categoria in categorias:
+        conn.execute(
+            "INSERT OR IGNORE INTO categorias_pecas (nome) VALUES (?)",
+            (categoria,)
+        )
+
+    conn.commit()
+    conn.close()
+
+
 def inserir_configuracao_padrao():
     conn = conectar()
     cursor = conn.cursor()
@@ -287,8 +336,8 @@ def inserir_configuracao_padrao():
 def _chave_banco_atual():
     usar_turso, url, _ = _usar_turso()
     if usar_turso:
-        return f"turso::{url}"
-    return f"local::{LOCAL_DB_PATH}"
+        return f"turso::{url}::{SCHEMA_VERSION}"
+    return f"local::{LOCAL_DB_PATH}::{SCHEMA_VERSION}"
 
 
 def inicializar_banco(force=False):
@@ -313,6 +362,7 @@ def inicializar_banco(force=False):
         criar_banco()
         garantir_migracoes()
         inserir_configuracao_padrao()
+        inserir_categorias_pecas_padrao()
 
         st.session_state["_g3d_banco_inicializado"] = True
         st.session_state["_g3d_banco_chave"] = chave_banco

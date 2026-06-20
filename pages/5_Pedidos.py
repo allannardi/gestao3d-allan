@@ -405,17 +405,162 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
     total_fmt = escape(moeda(total))
 
     html = f"""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap');
+
+    @media (min-width: 769px) {{
+        .g3d-pedido-card {{
+            position: relative;
+            border: 1px solid rgba(185,205,220,0.82) !important;
+            border-top: 4px solid {cor} !important;
+            border-radius: 20px !important;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFE 100%) !important;
+            padding: 16px 17px 15px 17px !important;
+            margin-bottom: 6px !important;
+            font-family: 'Barlow', system-ui, sans-serif !important;
+            box-shadow: 0 12px 28px rgba(10, 26, 92, 0.055);
+            overflow: hidden;
+        }}
+
+        .g3d-pedido-card:after {{
+            content: "";
+            position: absolute;
+            right: -44px;
+            top: -54px;
+            width: 118px;
+            height: 118px;
+            border-radius: 999px;
+            background: {cor}10;
+        }}
+
+        .g3d-pedido-top {{
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }}
+
+        .g3d-pedido-code {{
+            font-size: 30px !important;
+            font-weight: 800 !important;
+            color: #0A1A5C !important;
+            line-height: 1 !important;
+            letter-spacing: -0.6px;
+        }}
+
+        .g3d-pedido-status {{
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 7px !important;
+            padding: 6px 10px !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            border: 1px solid {cor}35 !important;
+            color: {cor} !important;
+            font-size: 12px !important;
+            font-weight: 800 !important;
+            white-space: nowrap !important;
+        }}
+
+        .g3d-pedido-status span {{
+            width: 8px !important;
+            height: 8px !important;
+            border-radius: 50% !important;
+            background: {cor} !important;
+            display: inline-block !important;
+        }}
+
+        .g3d-pedido-main {{
+            position: relative;
+            z-index: 1;
+        }}
+
+        .g3d-pedido-piece {{
+            font-size: 18px !important;
+            font-weight: 800 !important;
+            color: #0A1A5C !important;
+            line-height: 1.18 !important;
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .g3d-pedido-client {{
+            margin-top: 5px !important;
+            font-size: 12px !important;
+            color: #5C6C74 !important;
+            font-weight: 600 !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .g3d-pedido-bottom {{
+            position: relative;
+            z-index: 1;
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 9px !important;
+            margin-top: 14px !important;
+        }}
+
+        .g3d-pedido-mini {{
+            background: #F4F8FB !important;
+            border: 1px solid #DEE9EF !important;
+            border-radius: 14px !important;
+            padding: 9px 8px !important;
+            text-align: center !important;
+        }}
+
+        .g3d-pedido-mini strong {{
+            display: block !important;
+            font-size: 16px !important;
+            font-weight: 800 !important;
+            color: #0A1A5C !important;
+            line-height: 1 !important;
+            margin-bottom: 4px !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .g3d-pedido-mini span {{
+            display: block !important;
+            font-size: 9.5px !important;
+            font-weight: 800 !important;
+            color: #5C6C74 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.9px !important;
+            line-height: 1 !important;
+        }}
+
+        .g3d-pedido-peca-codigo {{
+            position: relative;
+            z-index: 1;
+            margin-top: 10px;
+            font-size: 11px;
+            color: #8A8F98;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+        }}
+    }}
+</style>
+
 <div class="g3d-pedido-card" style="border:1px solid #DEE9EF;border-top:4px solid {cor};border-radius:14px;background:#FFFFFF;padding:14px 16px;margin-bottom:4px;font-family:'Barlow', system-ui, sans-serif;">
     <div class="g3d-pedido-top">
-        <div class="g3d-pedido-code" style="font-size:28px;font-weight:800;color:#0A1A5C;line-height:1;">{codigo}</div>
-        <div class="g3d-pedido-status" style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:{cor}18;color:{cor};font-size:12px;font-weight:800;">
-            <span style="width:9px;height:9px;border-radius:50%;background:{cor};display:inline-block;"></span>{status}
+        <div class="g3d-pedido-code">{codigo}</div>
+        <div class="g3d-pedido-status">
+            <span></span>{status}
         </div>
     </div>
 
     <div class="g3d-pedido-main">
-        <div class="g3d-pedido-piece" style="font-size:18px;font-weight:800;color:#1E3137;line-height:1.2;">{peca_nome}</div>
-        <div class="g3d-pedido-client" style="margin-top:5px;font-size:12px;color:#5C6C74;font-weight:600;">{cliente_nome}</div>
+        <div class="g3d-pedido-piece">{peca_nome}</div>
+        <div class="g3d-pedido-client">{cliente_nome}</div>
     </div>
 
     <div class="g3d-pedido-bottom">
@@ -433,7 +578,7 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
         </div>
     </div>
 
-    <div style="margin-top:9px;font-size:11px;color:#8A8F98;font-weight:600;">{peca_codigo}</div>
+    <div class="g3d-pedido-peca-codigo">{peca_codigo}</div>
 </div>
 """
 

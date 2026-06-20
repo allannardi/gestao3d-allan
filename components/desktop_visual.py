@@ -367,6 +367,37 @@ def inject_desktop_visual():
                     white-space: nowrap;
                 }
 
+
+                /* Refinamento das listagens e cards de cadastro */
+                @media (min-width: 769px) {
+                    div[data-testid="stVerticalBlockBorderWrapper"] {
+                        border-radius: 20px !important;
+                        border-color: rgba(185, 205, 220, 0.78) !important;
+                        box-shadow: 0 12px 28px rgba(10, 26, 92, 0.050) !important;
+                    }
+
+                    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+                        box-shadow: 0 16px 36px rgba(10, 26, 92, 0.070) !important;
+                    }
+
+                    div[data-testid="stExpander"] {
+                        border-radius: 15px !important;
+                        border-color: rgba(185, 205, 220, 0.82) !important;
+                        background: #FFFFFF !important;
+                    }
+
+                    div[data-testid="stExpander"] summary {
+                        min-height: 42px !important;
+                    }
+
+                    div[data-testid="stExpander"] summary p {
+                        font-size: 13px !important;
+                        font-weight: 800 !important;
+                        color: #0A1A5C !important;
+                        letter-spacing: 0.1px !important;
+                    }
+                }
+
                 /* Separação geral entre blocos */
                 div[data-testid="stVerticalBlock"] {
                     gap: 0.9rem !important;

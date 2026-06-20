@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Banco local
+database/*.db
+database/*.db-*
+
+# Segredos locais
+.streamlit/secrets.toml
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+.idea/
+bkp/

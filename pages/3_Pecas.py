@@ -783,6 +783,50 @@ def peca_mobile_form_css():
                 .st-key-nova_peca_resumo_desktop {
                     display: block !important;
                 }
+
+
+                .g3d-mobile-form-step {
+                    display: block !important;
+                    background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFE 100%);
+                    border: 1px solid rgba(185, 205, 220, 0.82);
+                    border-left: 4px solid #0C65AA;
+                    border-radius: 17px;
+                    padding: 13px 15px;
+                    margin: 18px 0 12px 0;
+                    box-shadow: 0 10px 24px rgba(10, 26, 92, 0.045);
+                    font-family: 'Barlow', system-ui, sans-serif;
+                }
+
+                .g3d-mobile-form-step strong {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #100690;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    margin-bottom: 5px;
+                    line-height: 1.1;
+                }
+
+                .g3d-mobile-form-step span {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #5C6C74;
+                    line-height: 1.28;
+                }
+
+                .st-key-salvar_nova_peca button {
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 100%) !important;
+                    color: #FFFFFF !important;
+                    border-color: #0C65AA !important;
+                    min-height: 48px !important;
+                    border-radius: 15px !important;
+                    font-size: 15px !important;
+                    font-weight: 800 !important;
+                    box-shadow: 0 10px 26px rgba(12, 101, 170, 0.18) !important;
+                    margin-top: 8px !important;
+                }
             }
 
             @media (max-width: 768px) {

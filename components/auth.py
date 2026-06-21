@@ -105,8 +105,22 @@ def require_login():
                 color: #1E3137;
             }
 
-            div[data-testid="stForm"] input {
-                border-radius: 10px !important;
+            div[data-testid="stForm"] div[data-baseweb="base-input"],
+            div[data-testid="stForm"] div[data-baseweb="base-input"] > div,
+            div[data-testid="stForm"] div[data-baseweb="input"],
+            div[data-testid="stForm"] div[data-baseweb="input"] > div,
+            div[data-testid="stForm"] div[data-baseweb="select"] > div,
+            div[data-testid="stForm"] div[data-baseweb="textarea"],
+            div[data-testid="stForm"] div[data-baseweb="textarea"] > div {
+                border-radius: 12px !important;
+                overflow: hidden !important;
+                border-color: #B9CDDC !important;
+                background: #FFFFFF !important;
+            }
+
+            div[data-testid="stForm"] input,
+            div[data-testid="stForm"] textarea {
+                border-radius: 12px !important;
                 border: 1.5px solid #B9CDDC !important;
                 background: #FFFFFF !important;
             }

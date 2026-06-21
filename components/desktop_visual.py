@@ -155,6 +155,19 @@ def inject_desktop_visual():
                 }
 
                 /* Inputs */
+                div[data-baseweb="base-input"],
+                div[data-baseweb="base-input"] > div,
+                div[data-baseweb="input"],
+                div[data-baseweb="input"] > div,
+                div[data-baseweb="textarea"],
+                div[data-baseweb="textarea"] > div,
+                div[data-baseweb="select"] > div {
+                    border-radius: 12px !important;
+                    overflow: hidden !important;
+                    border-color: #D7E4EC !important;
+                    background: #FFFFFF !important;
+                }
+
                 div[data-testid="stTextInput"] input,
                 div[data-testid="stNumberInput"] input,
                 div[data-testid="stDateInput"] input,
@@ -395,6 +408,59 @@ def inject_desktop_visual():
                         font-weight: 800 !important;
                         color: #0A1A5C !important;
                         letter-spacing: 0.1px !important;
+                    }
+                }
+
+
+                /* Refinamento de formulários desktop */
+                @media (min-width: 769px) {
+                    div[data-testid="stForm"] {
+                        background: #FFFFFF !important;
+                        border: 1px solid rgba(185, 205, 220, 0.82) !important;
+                        border-radius: 20px !important;
+                        padding: 18px 18px 16px 18px !important;
+                        box-shadow: 0 12px 28px rgba(10, 26, 92, 0.050) !important;
+                    }
+
+                    div[data-testid="stForm"] div[data-testid="stVerticalBlock"] {
+                        gap: 0.55rem !important;
+                    }
+
+                    div[data-testid="stTextInput"] label,
+                    div[data-testid="stNumberInput"] label,
+                    div[data-testid="stDateInput"] label,
+                    div[data-testid="stTextArea"] label,
+                    div[data-testid="stSelectbox"] label,
+                    div[data-testid="stCheckbox"] label {
+                        color: #1E3137 !important;
+                        font-weight: 700 !important;
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                    }
+
+                    div[data-baseweb="base-input"],
+                    div[data-baseweb="base-input"] > div,
+                    div[data-baseweb="input"],
+                    div[data-baseweb="input"] > div,
+                    div[data-baseweb="textarea"],
+                    div[data-baseweb="textarea"] > div,
+                    div[data-baseweb="select"] > div {
+                        border-radius: 13px !important;
+                        overflow: hidden !important;
+                        border-color: #D7E4EC !important;
+                    }
+
+                    div[data-testid="stTextInput"] input,
+                    div[data-testid="stNumberInput"] input,
+                    div[data-testid="stDateInput"] input,
+                    div[data-testid="stTextArea"] textarea,
+                    div[data-baseweb="select"] > div {
+                        min-height: 42px !important;
+                        border-radius: 13px !important;
+                        border-color: #D7E4EC !important;
+                    }
+
+                    div[data-testid="stTextArea"] textarea {
+                        min-height: 90px !important;
                     }
                 }
 

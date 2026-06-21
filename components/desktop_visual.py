@@ -232,6 +232,30 @@ def inject_desktop_visual():
                     min-height: 44px !important;
                     font-family: 'Barlow', system-ui, sans-serif !important;
                     font-weight: 800 !important;
+                    background: linear-gradient(135deg, #0A1A5C 0%, #0C65AA 100%) !important;
+                    border: 1px solid #0C65AA !important;
+                    color: #FFFFFF !important;
+                    box-shadow: 0 10px 24px rgba(12, 101, 170, 0.18) !important;
+                }
+
+                .stFormSubmitButton > button * {
+                    color: #FFFFFF !important;
+                    fill: #FFFFFF !important;
+                }
+
+                .stFormSubmitButton > button:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 12px 26px rgba(12, 101, 170, 0.24) !important;
+                    filter: brightness(1.02);
+                }
+
+                /* CTA principais de salvar/criar */
+                .stButton > button[kind="primary"],
+                .stButton > button[kind="primary"] *,
+                .stFormSubmitButton > button[kind="primary"],
+                .stFormSubmitButton > button[kind="primary"] * {
+                    color: #FFFFFF !important;
+                    fill: #FFFFFF !important;
                 }
 
                 /* Tabelas DataFrame */
@@ -461,6 +485,142 @@ def inject_desktop_visual():
 
                     div[data-testid="stTextArea"] textarea {
                         min-height: 90px !important;
+                    }
+                }
+
+
+                /* Pente fino visual desktop */
+                @media (min-width: 769px) {
+                    .block-container {
+                        padding-bottom: 3rem !important;
+                    }
+
+                    h1 {
+                        font-size: clamp(36px, 3.2vw, 48px) !important;
+                        margin-top: 0.15rem !important;
+                        margin-bottom: 0.55rem !important;
+                    }
+
+                    h2 {
+                        letter-spacing: -0.4px !important;
+                    }
+
+                    h3 {
+                        letter-spacing: -0.2px !important;
+                    }
+
+                    [data-testid="stCaptionContainer"] {
+                        font-size: 14px !important;
+                        line-height: 1.35 !important;
+                    }
+
+                    div[data-testid="stMarkdownContainer"] p {
+                        color: #1E3137;
+                        line-height: 1.45 !important;
+                    }
+
+                    /* Busca e campos isolados */
+                    div[data-testid="stTextInput"] {
+                        margin-bottom: 0.20rem !important;
+                    }
+
+                    div[data-testid="stTextInput"] input::placeholder,
+                    div[data-testid="stTextArea"] textarea::placeholder {
+                        color: #8A8F98 !important;
+                        opacity: 0.82 !important;
+                    }
+
+                    /* Number input: botões + e - mais alinhados ao raio */
+                    div[data-testid="stNumberInput"] button {
+                        border-color: #D7E4EC !important;
+                        background: #F4F8FB !important;
+                        color: #0A1A5C !important;
+                        font-weight: 800 !important;
+                    }
+
+                    div[data-testid="stNumberInput"] button:hover {
+                        background: #EDF5FA !important;
+                        color: #0C65AA !important;
+                    }
+
+                    /* Select e menus */
+                    div[data-baseweb="select"] span {
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                    }
+
+                    div[data-baseweb="popover"] ul {
+                        border-radius: 14px !important;
+                        overflow: hidden !important;
+                        border: 1px solid #D7E4EC !important;
+                        box-shadow: 0 14px 32px rgba(10, 26, 92, 0.11) !important;
+                    }
+
+                    /* Alerts mais consistentes */
+                    div[data-testid="stAlert"] {
+                        border-radius: 16px !important;
+                        border-width: 1px !important;
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                    }
+
+                    div[data-testid="stAlert"] p {
+                        font-weight: 600 !important;
+                    }
+
+                    /* Abas / radios / checkboxes */
+                    div[role="radiogroup"] label {
+                        border-radius: 12px !important;
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                    }
+
+                    div[data-testid="stCheckbox"] label p,
+                    div[data-testid="stRadio"] label p {
+                        font-weight: 600 !important;
+                        color: #1E3137 !important;
+                    }
+
+                    /* Expanders */
+                    div[data-testid="stExpander"] details {
+                        border-radius: 15px !important;
+                    }
+
+                    div[data-testid="stExpander"] summary {
+                        padding-top: 0.70rem !important;
+                        padding-bottom: 0.70rem !important;
+                    }
+
+                    div[data-testid="stExpander"] summary svg {
+                        color: #0C65AA !important;
+                    }
+
+                    div[data-testid="stExpander"] [data-testid="stVerticalBlock"] {
+                        gap: 0.62rem !important;
+                    }
+
+                    /* Botões de ação em detalhes */
+                    div[data-testid="column"] .stButton > button {
+                        min-height: 40px !important;
+                    }
+
+                    /* Tabelas/dataframes */
+                    [data-testid="stDataFrame"] div {
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                    }
+
+                    /* Modais/dialogs */
+                    div[role="dialog"] {
+                        border-radius: 22px !important;
+                    }
+
+                    div[role="dialog"] h2,
+                    div[role="dialog"] h3 {
+                        color: #0A1A5C !important;
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                        font-weight: 800 !important;
+                    }
+
+                    /* Pequeno refinamento de espaçamentos após botões principais */
+                    .stButton {
+                        margin-top: 0.05rem !important;
                     }
                 }
 

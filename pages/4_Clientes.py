@@ -482,7 +482,7 @@ sidebar()
 mobile_bottom_nav("clientes")
 inject_desktop_visual()
 mobile_summary_css("clientes")
-header("Clientes", "Cadastro e gestão dos clientes do Ateliê")
+header("Clientes", "Cadastro e gestão dos clientes da Gestão 3D")
 
 
 conn = conectar()

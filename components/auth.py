@@ -145,7 +145,23 @@ def require_login():
                 border-color: #0A1A5C !important;
                 color: #FFFFFF !important;
             }
-        </style>
+        
+
+            div[data-testid="stForm"] {
+                transition: border 0.15s ease, box-shadow 0.15s ease;
+            }
+
+            div[data-testid="stForm"]:hover {
+                border-color: #A9C8DA !important;
+                box-shadow: 0 10px 28px rgba(16, 6, 144, 0.10) !important;
+            }
+
+            div[data-testid="stForm"] input::placeholder {
+                color: #8A8F98 !important;
+                opacity: 0.82 !important;
+            }
+
+</style>
         """,
         unsafe_allow_html=True
     )

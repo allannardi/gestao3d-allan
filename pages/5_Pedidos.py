@@ -1453,7 +1453,7 @@ inject_desktop_visual()
 pedidos_mobile_css()
 pedidos_resumo_mobile_css()
 pedido_mobile_form_css()
-header("Pedidos", "Cadastro e acompanhamento dos pedidos do Ateliê")
+header("Pedidos", "Cadastro e acompanhamento dos pedidos da Gestão 3D")
 
 
 energia_hora, depreciacao_hora, margem_padrao, meta_lucro_hora = carregar_configuracoes()

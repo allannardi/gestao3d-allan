@@ -9,10 +9,18 @@ from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
 from components.searchbar import searchbar
+from components.pagination import paginar_itens
 from components.section import section_title, small_section
 from components.auth import require_login
 from database import conectar, inicializar_banco
 
+
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
 
 
 def moeda(valor):
@@ -156,8 +164,7 @@ def editar_acessorio_modal(acessorio_id):
             st.rerun()
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
@@ -331,6 +338,13 @@ ORDER BY id DESC
 )).fetchall()
 
 conn.close()
+
+acessorios = paginar_itens(
+    acessorios,
+    "acessorios",
+    opcoes=(10, 25, 50, 100),
+    nome_item="acessórios"
+)
 
 
 for a in acessorios:

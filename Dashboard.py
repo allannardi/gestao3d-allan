@@ -13,6 +13,7 @@ from components.header import header
 from components.kpi import kpi_card
 from components.section import section_title
 from components.auth import require_login
+from components.formatters import data_br, data_para_date
 
 
 st.set_page_config(
@@ -23,8 +24,13 @@ st.set_page_config(
 )
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
+
+
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
@@ -503,17 +509,10 @@ def render_mobile_dashboard(
 inicializar_banco()
 
 
+
 def moeda(valor):
     return f"R$ {valor:.2f}".replace(".", ",")
 
-
-def data_para_date(valor):
-    if not valor:
-        return None
-    try:
-        return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
-    except Exception:
-        return None
 
 
 def cor_status_hex(status):
@@ -631,13 +630,14 @@ def carregar_filamentos_da_peca(conn, peca_id):
     """, (peca_id,)).fetchall()
 
 
-def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
+def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
     conn = conectar()
 
     peca = conn.execute("""
     SELECT
         p.peso_g,
         p.tempo_impressao_h,
+        p.tempo_pos_processamento_min,
         p.embalagem_custo,
         COALESCE(p.quantidade_lote, 1),
         f.custo_grama
@@ -660,9 +660,10 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
 
     peso_g = peca[0] if peca[0] else 0
     tempo_h = peca[1] if peca[1] else 0
-    embalagem = peca[2] if peca[2] else 0
-    quantidade_lote = peca[3] if peca[3] and peca[3] > 0 else 1
-    custo_grama = peca[4] if peca[4] else 0
+    tempo_pos_h = (peca[2] if peca[2] else 0) / 60
+    embalagem = peca[3] if peca[3] else 0
+    quantidade_lote = peca[4] if peca[4] and peca[4] > 0 else 1
+    custo_grama = peca[5] if peca[5] else 0
 
     if filamentos_peca:
         peso_g = sum((f[1] if f[1] else 0) for f in filamentos_peca)
@@ -672,6 +673,7 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
 
     custo_energia = tempo_h * energia_hora
     custo_depreciacao = tempo_h * depreciacao_hora
+    custo_pos_processamento = tempo_pos_h * custo_pos_processamento_hora
     custo_acessorios = sum(
         (a[0] if a[0] else 0) * (a[1] if a[1] else 0)
         for a in acessorios
@@ -681,13 +683,15 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
         custo_material
         + custo_energia
         + custo_depreciacao
+        + custo_pos_processamento
         + embalagem
         + custo_acessorios
     )
 
     custo_unitario = custo_lote / quantidade_lote if quantidade_lote > 0 else custo_lote
     peso_unitario = peso_g / quantidade_lote if quantidade_lote > 0 else peso_g
-    tempo_unitario = tempo_h / quantidade_lote if quantidade_lote > 0 else tempo_h
+    tempo_total_h = tempo_h + tempo_pos_h
+    tempo_unitario = tempo_total_h / quantidade_lote if quantidade_lote > 0 else tempo_total_h
 
     return {
         "custo_unitario": custo_unitario,
@@ -695,9 +699,115 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora):
         "tempo_unitario": tempo_unitario,
     }
 
+def calcular_custos_pecas_lote(conn, peca_ids, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
+    """
+    Calcula custos de várias peças em lote.
 
-def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora):
-    custo_peca = calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora)
+    Evita fazer 2 a 3 consultas no banco para cada pedido da Dashboard.
+    No Turso/cloud isso reduz bastante o número de chamadas remotas.
+    """
+    peca_ids = sorted({int(pid) for pid in peca_ids if pid})
+
+    if not peca_ids:
+        return {}
+
+    placeholders = ",".join(["?"] * len(peca_ids))
+
+    pecas = conn.execute(f"""
+    SELECT
+        p.id,
+        p.peso_g,
+        p.tempo_impressao_h,
+        p.tempo_pos_processamento_min,
+        p.embalagem_custo,
+        COALESCE(p.quantidade_lote, 1),
+        f.custo_grama
+    FROM pecas p
+    LEFT JOIN filamentos f ON p.filamento_id = f.id
+    WHERE p.id IN ({placeholders})
+    """, peca_ids).fetchall()
+
+    acessorios_rows = conn.execute(f"""
+    SELECT
+        pa.peca_id,
+        a.custo_unitario,
+        pa.quantidade
+    FROM peca_acessorios pa
+    LEFT JOIN acessorios a ON pa.acessorio_id = a.id
+    WHERE pa.peca_id IN ({placeholders})
+    """, peca_ids).fetchall()
+
+    filamentos_rows = conn.execute(f"""
+    SELECT
+        pf.peca_id,
+        f.custo_grama,
+        pf.peso_g
+    FROM peca_filamentos pf
+    LEFT JOIN filamentos f ON pf.filamento_id = f.id
+    WHERE pf.peca_id IN ({placeholders})
+    ORDER BY pf.id ASC
+    """, peca_ids).fetchall()
+
+    acessorios_por_peca = {}
+    for peca_id, custo_unitario, quantidade in acessorios_rows:
+        acessorios_por_peca.setdefault(peca_id, []).append((
+            custo_unitario if custo_unitario else 0,
+            quantidade if quantidade else 0,
+        ))
+
+    filamentos_por_peca = {}
+    for peca_id, custo_grama, peso_g in filamentos_rows:
+        filamentos_por_peca.setdefault(peca_id, []).append((
+            custo_grama if custo_grama else 0,
+            peso_g if peso_g else 0,
+        ))
+
+    custos = {}
+
+    for peca in pecas:
+        peca_id = peca[0]
+        peso_g = peca[1] if peca[1] else 0
+        tempo_h = peca[2] if peca[2] else 0
+        tempo_pos_h = (peca[3] if peca[3] else 0) / 60
+        embalagem = peca[4] if peca[4] else 0
+        quantidade_lote = peca[5] if peca[5] and peca[5] > 0 else 1
+        custo_grama = peca[6] if peca[6] else 0
+
+        filamentos_peca = filamentos_por_peca.get(peca_id, [])
+        acessorios_peca = acessorios_por_peca.get(peca_id, [])
+
+        if filamentos_peca:
+            peso_g = sum(peso for _, peso in filamentos_peca)
+            custo_material = sum(custo * peso for custo, peso in filamentos_peca)
+        else:
+            custo_material = peso_g * custo_grama
+
+        custo_energia = tempo_h * energia_hora
+        custo_depreciacao = tempo_h * depreciacao_hora
+        custo_pos_processamento = tempo_pos_h * custo_pos_processamento_hora
+        custo_acessorios = sum(custo * quantidade for custo, quantidade in acessorios_peca)
+
+        custo_lote = (
+            custo_material
+            + custo_energia
+            + custo_depreciacao
+            + custo_pos_processamento
+            + embalagem
+            + custo_acessorios
+        )
+
+        custos[peca_id] = {
+            "custo_unitario": custo_lote / quantidade_lote if quantidade_lote > 0 else custo_lote,
+            "peso_unitario": peso_g / quantidade_lote if quantidade_lote > 0 else peso_g,
+            "tempo_unitario": (tempo_h + tempo_pos_h) / quantidade_lote if quantidade_lote > 0 else (tempo_h + tempo_pos_h),
+        }
+
+    return custos
+
+
+def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_peca=None, custo_pos_processamento_hora=0):
+    if custo_peca is None:
+        custo_peca = calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora)
 
     quantidade = quantidade if quantidade else 0
     valor_unitario = valor_unitario if valor_unitario else 0
@@ -1526,7 +1636,8 @@ SELECT
     energia_hora,
     depreciacao_hora,
     margem_padrao,
-    meta_lucro_hora
+    meta_lucro_hora,
+    COALESCE(custo_pos_processamento_hora, 0)
 FROM configuracoes
 LIMIT 1
 """).fetchone()
@@ -1535,6 +1646,7 @@ energia = config[0]
 depreciacao = config[1]
 margem = config[2]
 meta_lucro = config[3]
+custo_pos_processamento_hora = config[4] if len(config) > 4 else 0
 
 pedidos = conn.execute("""
 SELECT
@@ -1559,6 +1671,15 @@ LEFT JOIN clientes c ON ped.cliente_id = c.id
 LEFT JOIN pecas pc ON ped.peca_id = pc.id
 ORDER BY ped.id DESC
 """).fetchall()
+
+peca_ids_dashboard = sorted({pedido[5] for pedido in pedidos if pedido[5]})
+custos_pecas_dashboard = calcular_custos_pecas_lote(
+    conn,
+    peca_ids_dashboard,
+    energia,
+    depreciacao,
+    custo_pos_processamento_hora
+)
 
 total_clientes = conn.execute("SELECT COUNT(*) FROM clientes").fetchone()[0]
 total_pecas = conn.execute("SELECT COUNT(*) FROM pecas").fetchone()[0]
@@ -1621,6 +1742,7 @@ for pedido in pedidos:
         frete,
         energia,
         depreciacao,
+        custos_pecas_dashboard.get(peca_id),
     )
 
     if status not in ["Entregue", "Cancelado"]:
@@ -1668,7 +1790,7 @@ for pedido in pedidos:
             peca_nome,
             f"{quantidade:.0f}",
             status,
-            data_pedido if data_pedido else "-",
+            data_br(data_pedido),
         ])
 
 

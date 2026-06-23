@@ -11,10 +11,19 @@ from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
 from components.searchbar import searchbar
+from components.pagination import paginar_itens
 from components.section import section_title, small_section
 from components.item_results import carregar_resultados_cliente
 from components.auth import require_login
 from database import conectar, inicializar_banco
+from components.formatters import data_br
+
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
 
 
 def moeda(valor):
@@ -472,8 +481,7 @@ def exibir_resultados_cliente(cliente_id):
         st.caption("Este cliente ainda não possui pedidos vinculados.")
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
@@ -709,6 +717,13 @@ ORDER BY id DESC
 
 conn.close()
 
+clientes = paginar_itens(
+    clientes,
+    "clientes",
+    opcoes=(10, 25, 50, 100),
+    nome_item="clientes"
+)
+
 
 for c in clientes:
 
@@ -725,7 +740,7 @@ for c in clientes:
     origem = c[10] if c[10] else "-"
     observacoes = c[11] if c[11] else ""
     status = c[12] if c[12] else "Ativo"
-    data_cadastro = c[13] if c[13] else "-"
+    data_cadastro = data_br(c[13])
 
     cor_card = "blue" if status == "Ativo" else "gray"
 
@@ -764,7 +779,15 @@ for c in clientes:
             if observacoes:
                 st.write(f"**Observações:** {observacoes}")
 
-            exibir_resultados_cliente(cliente_id)
+            mostrar_resultados_key = f"mostrar_resultados_cliente_{cliente_id}"
+
+            if secondary_button("Carregar resultados do cliente", f"carregar_resultados_cliente_{cliente_id}"):
+                st.session_state[mostrar_resultados_key] = True
+
+            if st.session_state.get(mostrar_resultados_key, False):
+                exibir_resultados_cliente(cliente_id)
+            else:
+                st.caption("Os resultados deste cliente serão carregados somente quando você clicar no botão acima.")
 
             col_btn1, col_btn2, col_btn3 = st.columns(3)
 

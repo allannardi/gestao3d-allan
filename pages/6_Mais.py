@@ -1,5 +1,12 @@
 import streamlit as st
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
+
+
 from database import inicializar_banco
 from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
@@ -86,8 +93,7 @@ def mais_css():
     )
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 

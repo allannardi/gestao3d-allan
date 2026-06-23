@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v05_filamentos_na_peca"
+SCHEMA_VERSION = "v10_02_pos_processamento"
 
 
 def _get_secret(section, key, default=None):
@@ -129,7 +129,21 @@ def conectar():
         return _conectar_turso(url, token)
 
     Path("database").mkdir(exist_ok=True)
-    return sqlite3.connect(LOCAL_DB_PATH)
+
+    conn = sqlite3.connect(
+        LOCAL_DB_PATH,
+        check_same_thread=False
+    )
+
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size=-32000")
+    except Exception:
+        pass
+
+    return conn
 
 
 def criar_banco():
@@ -142,7 +156,8 @@ def criar_banco():
         energia_hora REAL,
         depreciacao_hora REAL,
         margem_padrao REAL,
-        meta_lucro_hora REAL
+        meta_lucro_hora REAL,
+        custo_pos_processamento_hora REAL DEFAULT 0
     )
     """)
 
@@ -267,6 +282,16 @@ def criar_banco():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auth_config (
+        id INTEGER PRIMARY KEY,
+        username TEXT,
+        password_hash TEXT,
+        password_salt TEXT,
+        updated_at TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -287,6 +312,20 @@ def garantir_migracoes():
     garantir_coluna("pecas", "quantidade_lote", "REAL DEFAULT 1")
     garantir_coluna("filamentos", "status", "TEXT DEFAULT 'Ativo'")
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
+    garantir_coluna("configuracoes", "custo_pos_processamento_hora", "REAL DEFAULT 0")
+
+    conn = conectar()
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS auth_config (
+        id INTEGER PRIMARY KEY,
+        username TEXT,
+        password_hash TEXT,
+        password_salt TEXT,
+        updated_at TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
 
 
 def inserir_categorias_pecas_padrao():
@@ -324,9 +363,10 @@ def inserir_configuracao_padrao():
             energia_hora,
             depreciacao_hora,
             margem_padrao,
-            meta_lucro_hora
+            meta_lucro_hora,
+            custo_pos_processamento_hora
         )
-        VALUES (0.15, 0.75, 150, 5)
+        VALUES (0.15, 0.75, 150, 5, 0)
         """)
 
     conn.commit()

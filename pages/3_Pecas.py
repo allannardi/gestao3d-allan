@@ -10,9 +10,31 @@ from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
 from components.searchbar import searchbar
+from components.pagination import paginar_itens
 from components.section import section_title, small_section
 from components.auth import require_login
 from database import conectar, inicializar_banco
+from components.formatters import data_br
+
+
+
+def limpar_cache_dados():
+    """
+    Limpa cache de dados após gravações.
+
+    Mantém o app rápido nos reruns, mas evita que cadastros recém-salvos
+    fiquem temporariamente escondidos por causa do cache.
+    """
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
 
 
 def moeda(valor):
@@ -166,6 +188,7 @@ def montar_filamentos_lote(prefixo, filamentos_disponiveis, registros_existentes
 
     if secondary_button("+ Adicionar mais um filamento", f"{prefixo}_add_filamento"):
         st.session_state[f"{prefixo}_qtd_filamentos"] += 1
+        limpar_cache_dados()
         st.rerun()
 
     return filamentos_lote
@@ -222,6 +245,169 @@ def salvar_categoria_se_nova(conn, categoria):
     return categoria
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def carregar_base_pecas_cache():
+    """
+    Carrega dados da página de Peças em lote.
+
+    Reduz o problema do Streamlit de reexecutar a página a cada clique:
+    em vez de consultar acessórios/filamentos item por item, carregamos tudo
+    de uma vez e usamos dicionários em memória.
+    """
+    conn = conectar()
+
+    config = conn.execute("""
+    SELECT
+        energia_hora,
+        depreciacao_hora,
+        margem_padrao,
+        meta_lucro_hora,
+        COALESCE(custo_pos_processamento_hora, 0)
+    FROM configuracoes
+    LIMIT 1
+    """).fetchone()
+
+    filamentos = conn.execute("""
+    SELECT
+        id,
+        codigo,
+        nome,
+        material,
+        cor,
+        custo_grama
+    FROM filamentos
+    WHERE status IS NULL OR status = 'Ativo'
+    ORDER BY id DESC
+    """).fetchall()
+
+    filamentos_todos = conn.execute("""
+    SELECT
+        id,
+        codigo,
+        nome,
+        material,
+        cor,
+        custo_grama
+    FROM filamentos
+    ORDER BY id DESC
+    """).fetchall()
+
+    acessorios = conn.execute("""
+    SELECT
+        id,
+        codigo,
+        nome,
+        custo_unitario
+    FROM acessorios
+    ORDER BY nome ASC
+    """).fetchall()
+
+    categorias = carregar_categorias_pecas(conn)
+
+    pecas_base = conn.execute("""
+    SELECT
+        p.id,
+        p.codigo,
+        p.nome,
+        p.categoria,
+        p.peso_g,
+        p.tempo_impressao_h,
+        p.embalagem_custo,
+        COALESCE(p.quantidade_lote, 1),
+        f.codigo,
+        f.nome,
+        f.custo_grama,
+        p.tempo_pos_processamento_min
+    FROM pecas p
+    LEFT JOIN filamentos f ON p.filamento_id = f.id
+    ORDER BY p.id DESC
+    """).fetchall()
+
+    pecas_completas = conn.execute("""
+    SELECT
+        p.id,
+        p.codigo,
+        p.nome,
+        p.categoria,
+        p.peso_g,
+        p.tempo_impressao_h,
+        p.tempo_pos_processamento_min,
+        p.embalagem_custo,
+        p.link_stl,
+        p.link_modelo,
+        p.pasta_google_drive,
+        p.observacoes,
+        COALESCE(p.quantidade_lote, 1),
+        f.codigo,
+        f.nome,
+        f.custo_grama
+    FROM pecas p
+    LEFT JOIN filamentos f ON p.filamento_id = f.id
+    ORDER BY p.id DESC
+    """).fetchall()
+
+    peca_ids = [p[0] for p in pecas_base]
+
+    acessorios_por_peca = {}
+    filamentos_por_peca = {}
+
+    if peca_ids:
+        placeholders = ",".join(["?"] * len(peca_ids))
+
+        acessorios_rows = conn.execute(f"""
+        SELECT
+            pa.peca_id,
+            a.id,
+            a.nome,
+            a.custo_unitario,
+            pa.quantidade
+        FROM peca_acessorios pa
+        LEFT JOIN acessorios a ON pa.acessorio_id = a.id
+        WHERE pa.peca_id IN ({placeholders})
+        """, peca_ids).fetchall()
+
+        for row in acessorios_rows:
+            peca_id = row[0]
+            acessorios_por_peca.setdefault(peca_id, []).append(tuple(row[1:]))
+
+        filamentos_rows = conn.execute(f"""
+        SELECT
+            pf.peca_id,
+            pf.id,
+            f.id,
+            f.codigo,
+            f.nome,
+            f.material,
+            f.cor,
+            f.custo_grama,
+            pf.peso_g,
+            pf.observacao
+        FROM peca_filamentos pf
+        LEFT JOIN filamentos f ON pf.filamento_id = f.id
+        WHERE pf.peca_id IN ({placeholders})
+        ORDER BY pf.id ASC
+        """, peca_ids).fetchall()
+
+        for row in filamentos_rows:
+            peca_id = row[0]
+            filamentos_por_peca.setdefault(peca_id, []).append(tuple(row[1:]))
+
+    conn.close()
+
+    return {
+        "config": tuple(config) if config else (0.15, 0.75, 150, 5, 0),
+        "filamentos": [tuple(f) for f in filamentos],
+        "filamentos_todos": [tuple(f) for f in filamentos_todos],
+        "acessorios": [tuple(a) for a in acessorios],
+        "categorias_pecas": list(categorias),
+        "pecas_base": [tuple(p) for p in pecas_base],
+        "pecas_completas": [tuple(p) for p in pecas_completas],
+        "acessorios_por_peca": acessorios_por_peca,
+        "filamentos_por_peca": filamentos_por_peca,
+    }
+
+
+
 def carregar_pedidos_da_peca(peca_id):
     conn = conectar()
 
@@ -248,11 +434,13 @@ def carregar_pedidos_da_peca(peca_id):
 def calcular_custos(
     peso_g,
     tempo_impressao_h,
+    tempo_pos_processamento_min,
     embalagem_custo,
     custo_grama,
     acessorios_selecionados,
     energia_hora,
     depreciacao_hora,
+    custo_pos_processamento_hora,
     margem_padrao,
     meta_lucro_hora,
     quantidade_lote=1,
@@ -262,19 +450,25 @@ def calcular_custos(
     if quantidade <= 0:
         quantidade = 1
 
+    tempo_pos_h = (tempo_pos_processamento_min if tempo_pos_processamento_min else 0) / 60
+    tempo_total_h = (tempo_impressao_h if tempo_impressao_h else 0) + tempo_pos_h
+
     if filamentos_lote:
         peso_g = sum(f[2] if f[2] else 0 for f in filamentos_lote)
         custo_material = sum((f[1] if f[1] else 0) * (f[2] if f[2] else 0) for f in filamentos_lote)
     else:
         custo_material = peso_g * custo_grama
+
     custo_energia = tempo_impressao_h * energia_hora
     custo_depreciacao = tempo_impressao_h * depreciacao_hora
+    custo_pos_processamento = tempo_pos_h * custo_pos_processamento_hora
     custo_acessorios = sum(valor * qtd for _, valor, qtd in acessorios_selecionados)
 
     custo_total_lote = (
         custo_material
         + custo_energia
         + custo_depreciacao
+        + custo_pos_processamento
         + embalagem_custo
         + custo_acessorios
     )
@@ -286,10 +480,10 @@ def calcular_custos(
     preco_unitario = preco_sugerido_lote / quantidade
     lucro_unitario = lucro_lote / quantidade
     peso_unitario = peso_g / quantidade
-    tempo_unitario = tempo_impressao_h / quantidade if quantidade > 0 else 0
+    tempo_unitario = tempo_total_h / quantidade if quantidade > 0 else 0
 
     lucro_percentual = (lucro_lote / custo_total_lote) * 100 if custo_total_lote > 0 else 0
-    lucro_hora = lucro_lote / tempo_impressao_h if tempo_impressao_h > 0 else 0
+    lucro_hora = lucro_lote / tempo_total_h if tempo_total_h > 0 else 0
 
     if lucro_hora >= meta_lucro_hora:
         status = "Recomendado"
@@ -306,6 +500,9 @@ def calcular_custos(
         "material": custo_material,
         "energia": custo_energia,
         "depreciacao": custo_depreciacao,
+        "pos_processamento": custo_pos_processamento,
+        "tempo_pos_h": tempo_pos_h,
+        "tempo_total_h": tempo_total_h,
         "acessorios": custo_acessorios,
         "embalagem": embalagem_custo,
         "total": custo_total_lote,
@@ -657,11 +854,13 @@ def editar_peca_modal(peca_id_edit):
     custos_edit = calcular_custos(
         peso_edit,
         tempo_edit,
+        tempo_pos_edit,
         embalagem_edit,
         0,
         acessorios_selecionados_edit,
         energia_hora,
         depreciacao_hora,
+        custo_pos_processamento_hora,
         margem_padrao,
         meta_lucro_hora,
         quantidade_lote_edit,
@@ -690,6 +889,7 @@ def editar_peca_modal(peca_id_edit):
         cancelar_edicao = secondary_button("Cancelar", f"modal_cancelar_edicao_peca_{peca_id_edit}")
 
     if cancelar_edicao:
+        limpar_cache_dados()
         st.rerun()
 
     if salvar_edicao:
@@ -763,6 +963,7 @@ def editar_peca_modal(peca_id_edit):
             conn.close()
 
             st.success("Peça atualizada com sucesso!")
+            limpar_cache_dados()
             st.rerun()
 
 
@@ -1038,8 +1239,7 @@ def render_nova_peca_mobile_resumo(custos):
         st.markdown(html, unsafe_allow_html=True)
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
@@ -1052,79 +1252,23 @@ mobile_summary_css("pecas")
 header("Peças", "Biblioteca de modelos e cálculo de rentabilidade")
 
 
-conn = conectar()
+base_pecas = carregar_base_pecas_cache()
 
-config = conn.execute("""
-SELECT
-    energia_hora,
-    depreciacao_hora,
-    margem_padrao,
-    meta_lucro_hora
-FROM configuracoes
-LIMIT 1
-""").fetchone()
-
+config = base_pecas["config"]
 energia_hora = config[0]
 depreciacao_hora = config[1]
 margem_padrao = config[2]
 meta_lucro_hora = config[3]
+custo_pos_processamento_hora = config[4] if len(config) > 4 else 0
 
-filamentos = conn.execute("""
-SELECT
-    id,
-    codigo,
-    nome,
-    material,
-    cor,
-    custo_grama
-FROM filamentos
-WHERE status IS NULL OR status = 'Ativo'
-ORDER BY id DESC
-""").fetchall()
-
-filamentos_todos = conn.execute("""
-SELECT
-    id,
-    codigo,
-    nome,
-    material,
-    cor,
-    custo_grama
-FROM filamentos
-ORDER BY id DESC
-""").fetchall()
-
-acessorios = conn.execute("""
-SELECT
-    id,
-    codigo,
-    nome,
-    custo_unitario
-FROM acessorios
-ORDER BY nome ASC
-""").fetchall()
-
-categorias_pecas = carregar_categorias_pecas(conn)
-
-pecas_base = conn.execute("""
-SELECT
-    p.id,
-    p.codigo,
-    p.nome,
-    p.categoria,
-    p.peso_g,
-    p.tempo_impressao_h,
-    p.embalagem_custo,
-    COALESCE(p.quantidade_lote, 1),
-    f.codigo,
-    f.nome,
-    f.custo_grama
-FROM pecas p
-LEFT JOIN filamentos f ON p.filamento_id = f.id
-ORDER BY p.id DESC
-""").fetchall()
-
-conn.close()
+filamentos = base_pecas["filamentos"]
+filamentos_todos = base_pecas["filamentos_todos"]
+acessorios = base_pecas["acessorios"]
+categorias_pecas = base_pecas["categorias_pecas"]
+pecas_base = base_pecas["pecas_base"]
+pecas_completas = base_pecas["pecas_completas"]
+acessorios_por_peca = base_pecas["acessorios_por_peca"]
+filamentos_por_peca = base_pecas["filamentos_por_peca"]
 
 
 total_pecas = len(pecas_base)
@@ -1133,10 +1277,8 @@ soma_lucro_hora = 0
 soma_custo_unitario = 0
 
 for p in pecas_base:
-    conn = conectar()
-    acessorios_peca = carregar_acessorios_da_peca(conn, p[0])
-    filamentos_peca = carregar_filamentos_da_peca(conn, p[0])
-    conn.close()
+    acessorios_peca = acessorios_por_peca.get(p[0], [])
+    filamentos_peca = filamentos_por_peca.get(p[0], [])
 
     acessorios_calc = [
         (a[0], a[2] if a[2] else 0, a[3] if a[3] else 0)
@@ -1151,11 +1293,13 @@ for p in pecas_base:
     custos = calcular_custos(
         p[4] if p[4] else 0,
         p[5] if p[5] else 0,
+        p[11] if len(p) > 11 and p[11] else 0,
         p[6] if p[6] else 0,
         p[10] if p[10] else 0,
         acessorios_calc,
         energia_hora,
         depreciacao_hora,
+        custo_pos_processamento_hora,
         margem_padrao,
         meta_lucro_hora,
         p[7] if p[7] else 1,
@@ -1349,11 +1493,13 @@ if st.session_state["mostrar_form_peca"]:
         custos = calcular_custos(
             peso_g,
             tempo_impressao_h,
+            tempo_pos,
             embalagem_custo,
             0,
             acessorios_selecionados,
             energia_hora,
             depreciacao_hora,
+            custo_pos_processamento_hora,
             margem_padrao,
             meta_lucro_hora,
             quantidade_lote,
@@ -1462,6 +1608,7 @@ if st.session_state["mostrar_form_peca"]:
                 st.success("Peça cadastrada com sucesso!")
                 st.session_state["mostrar_form_peca"] = False
                 st.session_state.pop("nova_peca_qtd_filamentos", None)
+                limpar_cache_dados()
                 st.rerun()
 
 
@@ -1477,43 +1624,26 @@ busca = searchbar(
 )
 
 
-conn = conectar()
+termo_busca = (busca or "").strip().lower()
 
-pecas = conn.execute("""
-SELECT
-    p.id,
-    p.codigo,
-    p.nome,
-    p.categoria,
-    p.peso_g,
-    p.tempo_impressao_h,
-    p.tempo_pos_processamento_min,
-    p.embalagem_custo,
-    p.link_stl,
-    p.link_modelo,
-    p.pasta_google_drive,
-    p.observacoes,
-    COALESCE(p.quantidade_lote, 1),
-    f.codigo,
-    f.nome,
-    f.custo_grama
-FROM pecas p
-LEFT JOIN filamentos f ON p.filamento_id = f.id
-WHERE p.nome LIKE ?
-   OR p.codigo LIKE ?
-   OR p.categoria LIKE ?
-   OR f.nome LIKE ?
-   OR f.codigo LIKE ?
-ORDER BY p.id DESC
-""", (
-    f"%{busca}%",
-    f"%{busca}%",
-    f"%{busca}%",
-    f"%{busca}%",
-    f"%{busca}%"
-)).fetchall()
+if termo_busca:
+    pecas = [
+        p for p in pecas_completas
+        if termo_busca in str(p[1] or "").lower()
+        or termo_busca in str(p[2] or "").lower()
+        or termo_busca in str(p[3] or "").lower()
+        or termo_busca in str(p[13] or "").lower()
+        or termo_busca in str(p[14] or "").lower()
+    ]
+else:
+    pecas = pecas_completas
 
-conn.close()
+pecas = paginar_itens(
+    pecas,
+    "pecas",
+    opcoes=(10, 25, 50, 100),
+    nome_item="peças"
+)
 
 
 for p in pecas:
@@ -1535,10 +1665,8 @@ for p in pecas:
     filamento_nome = p[14] if p[14] else "-"
     custo_grama = p[15] if p[15] else 0
 
-    conn = conectar()
-    acessorios_peca = carregar_acessorios_da_peca(conn, peca_id)
-    filamentos_peca = carregar_filamentos_da_peca(conn, peca_id)
-    conn.close()
+    acessorios_peca = acessorios_por_peca.get(peca_id, [])
+    filamentos_peca = filamentos_por_peca.get(peca_id, [])
 
     acessorios_calc = [
         (a[0], a[2] if a[2] else 0, a[3] if a[3] else 0)
@@ -1553,11 +1681,13 @@ for p in pecas:
     custos = calcular_custos(
         peso,
         tempo_impressao,
+        tempo_pos,
         embalagem,
         custo_grama,
         acessorios_calc,
         energia_hora,
         depreciacao_hora,
+        custo_pos_processamento_hora,
         margem_padrao,
         meta_lucro_hora,
         quantidade_lote,
@@ -1610,7 +1740,7 @@ for p in pecas:
                 st.write(f"**Peso:** {custos['peso_unitario']:.1f} g")
 
             with col_u2:
-                st.write(f"**Tempo:** {custos['tempo_unitario']:.2f} h")
+                st.write(f"**Tempo total:** {custos['tempo_unitario']:.2f} h")
 
             with col_u3:
                 st.write(f"**Custo:** {moeda(custos['custo_unitario'])}")
@@ -1623,7 +1753,7 @@ for p in pecas:
 
             small_section("Resumo do lote")
 
-            col_l1, col_l2, col_l3, col_l4, col_l5 = st.columns(5)
+            col_l1, col_l2, col_l3, col_l4, col_l5, col_l6 = st.columns(6)
 
             with col_l1:
                 st.write(f"**Material:** {moeda(custos['material'])}")
@@ -1635,9 +1765,12 @@ for p in pecas:
                 st.write(f"**Depreciação:** {moeda(custos['depreciacao'])}")
 
             with col_l4:
-                st.write(f"**Acessórios:** {moeda(custos['acessorios'])}")
+                st.write(f"**Pós-proc.:** {moeda(custos['pos_processamento'])}")
 
             with col_l5:
+                st.write(f"**Acessórios:** {moeda(custos['acessorios'])}")
+
+            with col_l6:
                 st.write(f"**Total:** {moeda(custos['total'])}")
 
             col_lp1, col_lp2, col_lp3 = st.columns(3)
@@ -1666,56 +1799,64 @@ for p in pecas:
                         f"Custo: {moeda(custo_filamento)}"
                     )
 
-            pedidos_peca = carregar_pedidos_da_peca(peca_id)
+            mostrar_pedidos_key = f"mostrar_pedidos_peca_{peca_id}"
 
-            small_section("Pedidos desta peça")
+            if secondary_button("Carregar pedidos desta peça", f"carregar_pedidos_peca_{peca_id}"):
+                st.session_state[mostrar_pedidos_key] = True
 
-            if pedidos_peca:
-                qtd_vendida = 0
-                faturamento_peca = 0
-                lucro_peca = 0
+            if st.session_state.get(mostrar_pedidos_key, False):
+                pedidos_peca = carregar_pedidos_da_peca(peca_id)
 
-                for pedido_peca in pedidos_peca:
-                    qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
-                    valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
-                    desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
-                    frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
-                    status_pedido = pedido_peca[6] if pedido_peca[6] else "Orçamento"
-                    total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
-                    lucro_pedido_peca = total_pedido_peca - (qtd_pedido * custos["custo_unitario"])
+                small_section("Pedidos desta peça")
 
-                    if status_pedido != "Cancelado":
-                        qtd_vendida += qtd_pedido
-                        faturamento_peca += total_pedido_peca
-                        lucro_peca += lucro_pedido_peca
+                if pedidos_peca:
+                    qtd_vendida = 0
+                    faturamento_peca = 0
+                    lucro_peca = 0
 
-                col_ped1, col_ped2, col_ped3, col_ped4 = st.columns(4)
+                    for pedido_peca in pedidos_peca:
+                        qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
+                        valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
+                        desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
+                        frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
+                        status_pedido = pedido_peca[6] if pedido_peca[6] else "Orçamento"
+                        total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
+                        lucro_pedido_peca = total_pedido_peca - (qtd_pedido * custos["custo_unitario"])
 
-                with col_ped1:
-                    st.write(f"**Pedidos:** {len(pedidos_peca)}")
+                        if status_pedido != "Cancelado":
+                            qtd_vendida += qtd_pedido
+                            faturamento_peca += total_pedido_peca
+                            lucro_peca += lucro_pedido_peca
 
-                with col_ped2:
-                    st.write(f"**Qtd. vendida:** {qtd_vendida:.0f}")
+                    col_ped1, col_ped2, col_ped3, col_ped4 = st.columns(4)
 
-                with col_ped3:
-                    st.write(f"**Faturamento:** {moeda(faturamento_peca)}")
+                    with col_ped1:
+                        st.write(f"**Pedidos:** {len(pedidos_peca)}")
 
-                with col_ped4:
-                    st.write(f"**Lucro:** {moeda(lucro_peca)}")
+                    with col_ped2:
+                        st.write(f"**Qtd. vendida:** {qtd_vendida:.0f}")
 
-                for pedido_peca in pedidos_peca[:5]:
-                    qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
-                    valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
-                    desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
-                    frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
-                    total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
+                    with col_ped3:
+                        st.write(f"**Faturamento:** {moeda(faturamento_peca)}")
 
-                    st.write(
-                        f"- **{pedido_peca[0]}** | {pedido_peca[1] or '-'} | "
-                        f"{qtd_pedido:.0f} un | {pedido_peca[6]} | {moeda(total_pedido_peca)}"
-                    )
+                    with col_ped4:
+                        st.write(f"**Lucro:** {moeda(lucro_peca)}")
+
+                    for pedido_peca in pedidos_peca[:5]:
+                        qtd_pedido = pedido_peca[2] if pedido_peca[2] else 0
+                        valor_unitario_pedido = pedido_peca[3] if pedido_peca[3] else 0
+                        desconto_pedido = pedido_peca[4] if pedido_peca[4] else 0
+                        frete_pedido = pedido_peca[5] if pedido_peca[5] else 0
+                        total_pedido_peca = qtd_pedido * valor_unitario_pedido - desconto_pedido + frete_pedido
+
+                        st.write(
+                            f"- **{pedido_peca[0]}** | {pedido_peca[1] or '-'} | "
+                            f"{qtd_pedido:.0f} un | {pedido_peca[6]} | {data_br(pedido_peca[7])} | {moeda(total_pedido_peca)}"
+                        )
+                else:
+                    st.caption("Ainda não existem pedidos para esta peça.")
             else:
-                st.caption("Ainda não existem pedidos para esta peça.")
+                st.caption("Os pedidos desta peça serão carregados somente quando você clicar no botão acima.")
 
             if acessorios_peca:
                 small_section("Acessórios usados no lote")
@@ -1758,6 +1899,7 @@ for p in pecas:
             with col_btn3:
                 if danger_button("Excluir", f"excluir_peca_{peca_id}"):
                     excluir_peca(peca_id)
+                    limpar_cache_dados()
                     st.rerun()
 
     st.write("")

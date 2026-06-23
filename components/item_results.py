@@ -1,4 +1,5 @@
 from database import conectar
+from components.formatters import data_br
 
 
 def _valor(valor, padrao=0):
@@ -14,7 +15,8 @@ def carregar_configuracoes_resultados():
             energia_hora,
             depreciacao_hora,
             margem_padrao,
-            meta_lucro_hora
+            meta_lucro_hora,
+            COALESCE(custo_pos_processamento_hora, 0)
         FROM configuracoes
         LIMIT 1
         """).fetchone()
@@ -24,13 +26,14 @@ def carregar_configuracoes_resultados():
     conn.close()
 
     if config is None:
-        return 0.15, 0.75, 150, 5
+        return 0.15, 0.75, 150, 5, 0
 
     return (
         _valor(config[0], 0.15),
         _valor(config[1], 0.75),
         _valor(config[2], 150),
         _valor(config[3], 5),
+        _valor(config[4], 0) if len(config) > 4 else 0,
     )
 
 
@@ -45,11 +48,12 @@ def tabela_existe(conn, nome_tabela):
         return False
 
 
-def calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_hora):
+def calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
     peca = conn.execute("""
     SELECT
         p.peso_g,
         p.tempo_impressao_h,
+        p.tempo_pos_processamento_min,
         p.embalagem_custo,
         COALESCE(p.quantidade_lote, 1),
         f.custo_grama
@@ -69,9 +73,10 @@ def calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_h
 
     peso_g = _valor(peca[0], 0)
     tempo_h = _valor(peca[1], 0)
-    embalagem = _valor(peca[2], 0)
-    quantidade_lote = _valor(peca[3], 1) or 1
-    custo_grama_padrao = _valor(peca[4], 0)
+    tempo_pos_h = _valor(peca[2], 0) / 60
+    embalagem = _valor(peca[3], 0)
+    quantidade_lote = _valor(peca[4], 1) or 1
+    custo_grama_padrao = _valor(peca[5], 0)
 
     if quantidade_lote <= 0:
         quantidade_lote = 1
@@ -108,11 +113,13 @@ def calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_h
 
     custo_energia = tempo_h * energia_hora
     custo_depreciacao = tempo_h * depreciacao_hora
+    custo_pos_processamento = tempo_pos_h * custo_pos_processamento_hora
 
     custo_lote = (
         custo_material
         + custo_energia
         + custo_depreciacao
+        + custo_pos_processamento
         + embalagem
         + custo_acessorios
     )
@@ -120,14 +127,14 @@ def calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_h
     return {
         "quantidade_lote": quantidade_lote,
         "peso_unitario": peso_g / quantidade_lote if quantidade_lote > 0 else 0,
-        "tempo_unitario": tempo_h / quantidade_lote if quantidade_lote > 0 else 0,
+        "tempo_unitario": (tempo_h + tempo_pos_h) / quantidade_lote if quantidade_lote > 0 else 0,
         "custo_lote": custo_lote,
         "custo_unitario": custo_lote / quantidade_lote if quantidade_lote > 0 else 0,
     }
 
 
-def calcular_pedido_conn(conn, peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora):
-    custo_peca = calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_hora)
+def calcular_pedido_conn(conn, peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
+    custo_peca = calcular_custo_unitario_peca_conn(conn, peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora)
 
     quantidade = _valor(quantidade, 0)
     valor_unitario = _valor(valor_unitario, 0)
@@ -181,7 +188,7 @@ def _finalizar_resumo(resumo):
 
 
 def carregar_resultados_cliente(cliente_id):
-    energia_hora, depreciacao_hora, _, _ = carregar_configuracoes_resultados()
+    energia_hora, depreciacao_hora, _, _, custo_pos_processamento_hora = carregar_configuracoes_resultados()
     conn = conectar()
     resumo = _resumo_inicial()
 
@@ -213,7 +220,7 @@ def carregar_resultados_cliente(cliente_id):
         desconto = _valor(pedido[6], 0)
         frete = _valor(pedido[7], 0)
         status = pedido[8] or "Orçamento"
-        data_pedido = pedido[9] or "-"
+        data_pedido = data_br(pedido[9])
 
         calc = calcular_pedido_conn(
             conn,
@@ -252,7 +259,7 @@ def carregar_resultados_cliente(cliente_id):
 
 
 def carregar_resultados_filamento(filamento_id):
-    energia_hora, depreciacao_hora, _, _ = carregar_configuracoes_resultados()
+    energia_hora, depreciacao_hora, _, _, custo_pos_processamento_hora = carregar_configuracoes_resultados()
     conn = conectar()
     resumo = _resumo_inicial()
     resumo["peso_consumido_g"] = 0
@@ -341,7 +348,7 @@ def carregar_resultados_filamento(filamento_id):
         desconto = _valor(pedido[7], 0)
         frete = _valor(pedido[8], 0)
         status = pedido[9] or "Orçamento"
-        data_pedido = pedido[10] or "-"
+        data_pedido = data_br(pedido[10])
         quantidade_lote = _valor(pedido[11], 1) or 1
         peso_filamento_lote = _valor(pedido[12], 0)
 

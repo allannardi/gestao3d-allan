@@ -10,11 +10,20 @@ from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
 from components.searchbar import searchbar
+from components.pagination import paginar_itens
 from components.section import section_title, small_section
 from components.item_results import carregar_resultados_filamento
 from components.auth import require_login
 from database import conectar, inicializar_banco
+from components.formatters import data_br
 
+
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_css_base_cache():
+    with open("assets/style.css", encoding="utf-8") as f:
+        return f.read()
 
 
 def moeda(valor):
@@ -314,8 +323,7 @@ def exibir_resultados_filamento(filamento_id):
         st.caption("Este filamento ainda não possui pedidos vinculados.")
 
 
-with open("assets/style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
@@ -528,6 +536,13 @@ ORDER BY id DESC
 
 conn.close()
 
+filamentos = paginar_itens(
+    filamentos,
+    "filamentos",
+    opcoes=(10, 25, 50, 100),
+    nome_item="filamentos"
+)
+
 for f in filamentos:
 
     filamento_id = f[0]
@@ -539,11 +554,11 @@ for f in filamentos:
     peso = f[6]
     valor = f[7]
     fornecedor = f[8] if f[8] else "-"
-    data = f[9] if f[9] else "-"
+    data = data_br(f[9])
     observacoes = f[10] if f[10] else ""
     custo_g = f[11]
     status = f[12] if f[12] else "Ativo"
-    data_finalizacao = f[13] if f[13] else "-"
+    data_finalizacao = data_br(f[13])
 
     cor_card = "blue" if status == "Ativo" else "gray"
 
@@ -555,22 +570,6 @@ for f in filamentos:
             subtitulo=f"{material} • {marca} • {cor}",
             cor=cor_card
         )
-
-        conn = conectar()
-
-        pecas_do_filamento = conn.execute("""
-        SELECT
-            codigo,
-            nome,
-            categoria,
-            peso_g,
-            tempo_impressao_h
-        FROM pecas
-        WHERE filamento_id = ?
-        ORDER BY id DESC
-        """, (filamento_id,)).fetchall()
-
-        conn.close()
 
         with st.expander("Detalhes, peças vinculadas e ações"):
 
@@ -600,20 +599,44 @@ for f in filamentos:
             if observacoes:
                 st.write(f"**Observações:** {observacoes}")
 
-            st.markdown("#### Peças cadastradas com este filamento")
+            mostrar_resultados_key = f"mostrar_resultados_filamento_{filamento_id}"
 
-            if pecas_do_filamento:
-                for peca in pecas_do_filamento:
-                    st.write(
-                        f"- **{peca[0]} - {peca[1]}** | "
-                        f"Categoria: {peca[2]} | "
-                        f"Peso: {peca[3]:.1f}g | "
-                        f"Tempo: {peca[4]:.2f}h"
-                    )
+            if secondary_button("Carregar peças e resultados", f"carregar_resultados_filamento_{filamento_id}"):
+                st.session_state[mostrar_resultados_key] = True
+
+            if st.session_state.get(mostrar_resultados_key, False):
+                conn = conectar()
+
+                pecas_do_filamento = conn.execute("""
+                SELECT
+                    codigo,
+                    nome,
+                    categoria,
+                    peso_g,
+                    tempo_impressao_h
+                FROM pecas
+                WHERE filamento_id = ?
+                ORDER BY id DESC
+                """, (filamento_id,)).fetchall()
+
+                conn.close()
+
+                st.markdown("#### Peças cadastradas com este filamento")
+
+                if pecas_do_filamento:
+                    for peca in pecas_do_filamento:
+                        st.write(
+                            f"- **{peca[0]} - {peca[1]}** | "
+                            f"Categoria: {peca[2]} | "
+                            f"Peso: {peca[3]:.1f}g | "
+                            f"Tempo: {peca[4]:.2f}h"
+                        )
+                else:
+                    st.caption("Nenhuma peça cadastrada com este filamento.")
+
+                exibir_resultados_filamento(filamento_id)
             else:
-                st.caption("Nenhuma peça cadastrada com este filamento.")
-
-            exibir_resultados_filamento(filamento_id)
+                st.caption("Peças vinculadas e resultados serão carregados somente quando você clicar no botão acima.")
 
             col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
 

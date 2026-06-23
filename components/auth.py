@@ -1,18 +1,152 @@
 import base64
+import hashlib
 import hmac
+import secrets as secrets_lib
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
 
+from database import conectar
+
+
+ITERACOES_HASH_SENHA = 200_000
+
+
+def _auth_secret(chave, padrao=""):
+    try:
+        return str(st.secrets["auth"][chave])
+    except Exception:
+        return padrao
+
+
+def garantir_tabela_auth():
+    """Garante a tabela de senha do app sem depender da inicialização completa."""
+    try:
+        conn = conectar()
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS auth_config (
+            id INTEGER PRIMARY KEY,
+            username TEXT,
+            password_hash TEXT,
+            password_salt TEXT,
+            updated_at TEXT
+        )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _buscar_auth_config():
+    garantir_tabela_auth()
+
+    try:
+        conn = conectar()
+        row = conn.execute("""
+        SELECT username, password_hash, password_salt, updated_at
+        FROM auth_config
+        WHERE id = 1
+        """).fetchone()
+        conn.close()
+        return row
+    except Exception:
+        return None
+
+
+def _hash_senha(senha, salt):
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        str(senha).encode("utf-8"),
+        str(salt).encode("utf-8"),
+        ITERACOES_HASH_SENHA,
+    ).hex()
+
+
+def usuario_auth_atual():
+    row = _buscar_auth_config()
+    usuario_padrao = _auth_secret("username", "admin")
+
+    if row and row[0]:
+        return row[0]
+
+    return usuario_padrao
+
+
+def senha_personalizada_ativa():
+    row = _buscar_auth_config()
+    return bool(row and row[1] and row[2])
+
 
 def verificar_login(usuario, senha):
-    usuario_correto = st.secrets["auth"]["username"]
-    senha_correta = st.secrets["auth"]["password"]
+    usuario_digitado = str(usuario or "")
+    senha_digitada = str(senha or "")
 
-    usuario_ok = hmac.compare_digest(usuario, usuario_correto)
-    senha_ok = hmac.compare_digest(senha, senha_correta)
+    row = _buscar_auth_config()
+
+    if row and row[1] and row[2]:
+        usuario_correto = str(row[0] or _auth_secret("username", "admin"))
+        senha_hash_correta = str(row[1])
+        salt = str(row[2])
+
+        usuario_ok = hmac.compare_digest(usuario_digitado, usuario_correto)
+        senha_ok = hmac.compare_digest(_hash_senha(senha_digitada, salt), senha_hash_correta)
+
+        return usuario_ok and senha_ok
+
+    usuario_correto = _auth_secret("username", "admin")
+    senha_correta = _auth_secret("password", "")
+
+    usuario_ok = hmac.compare_digest(usuario_digitado, usuario_correto)
+    senha_ok = hmac.compare_digest(senha_digitada, senha_correta)
 
     return usuario_ok and senha_ok
+
+
+def alterar_senha_app(usuario, senha_atual, nova_senha):
+    usuario = str(usuario or "").strip() or usuario_auth_atual()
+    senha_atual = str(senha_atual or "")
+    nova_senha = str(nova_senha or "")
+
+    if not verificar_login(usuario, senha_atual):
+        return False, "Senha atual inválida."
+
+    if len(nova_senha) < 4:
+        return False, "A nova senha precisa ter pelo menos 4 caracteres."
+
+    salt = secrets_lib.token_hex(16)
+    senha_hash = _hash_senha(nova_senha, salt)
+    atualizado_em = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    garantir_tabela_auth()
+    conn = conectar()
+    conn.execute("""
+    INSERT INTO auth_config
+    (
+        id,
+        username,
+        password_hash,
+        password_salt,
+        updated_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        username = excluded.username,
+        password_hash = excluded.password_hash,
+        password_salt = excluded.password_salt,
+        updated_at = excluded.updated_at
+    """, (
+        1,
+        usuario,
+        senha_hash,
+        salt,
+        atualizado_em,
+    ))
+    conn.commit()
+    conn.close()
+
+    return True, "Senha alterada com sucesso."
 
 
 def logo_base64(caminho):

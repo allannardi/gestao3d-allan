@@ -1979,8 +1979,8 @@ if st.session_state["mostrar_form_pedido"]:
                 )
 
             with col_s2:
-                data_pedido = st.date_input("Data do pedido", value=date.today(), key="novo_pedido_data")
-                data_entrega = st.date_input("Entrega prevista", value=date.today(), key="novo_pedido_entrega")
+                data_pedido = st.date_input("Data do pedido", value=date.today(), format="DD/MM/YYYY", key="novo_pedido_data")
+                data_entrega = st.date_input("Entrega prevista", value=date.today(), format="DD/MM/YYYY", key="novo_pedido_entrega")
 
             observacoes = st.text_area("Observações", key="novo_pedido_observacoes")
 

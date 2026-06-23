@@ -431,7 +431,7 @@ if st.session_state["mostrar_form_filamento"]:
 
         fornecedor = st.text_input("Fornecedor")
 
-        data_compra = st.date_input("Data da Compra")
+        data_compra = st.date_input("Data da Compra", format="DD/MM/YYYY")
 
         observacoes = st.text_area("Observações")
 

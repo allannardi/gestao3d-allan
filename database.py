@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v10_02_pos_processamento"
+SCHEMA_VERSION = "v11_01_filamento_no_pedido"
 
 
 def _get_secret(section, key, default=None):
@@ -222,6 +222,7 @@ def criar_banco():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pedido_id INTEGER,
         filamento_id INTEGER,
+        peso_g REAL DEFAULT 0,
         observacao TEXT
     )
     """)
@@ -313,6 +314,7 @@ def garantir_migracoes():
     garantir_coluna("filamentos", "status", "TEXT DEFAULT 'Ativo'")
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
     garantir_coluna("configuracoes", "custo_pos_processamento_hora", "REAL DEFAULT 0")
+    garantir_coluna("pedido_filamentos", "peso_g", "REAL DEFAULT 0")
 
     conn = conectar()
     conn.execute("""

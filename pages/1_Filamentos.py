@@ -621,7 +621,7 @@ for f in filamentos:
 
                 conn.close()
 
-                st.markdown("#### Peças cadastradas com este filamento")
+                st.markdown("#### Peças com este filamento como referência")
 
                 if pecas_do_filamento:
                     for peca in pecas_do_filamento:
@@ -632,7 +632,7 @@ for f in filamentos:
                             f"Tempo: {peca[4]:.2f}h"
                         )
                 else:
-                    st.caption("Nenhuma peça cadastrada com este filamento.")
+                    st.caption("Nenhuma peça usa este filamento como referência de cálculo.")
 
                 exibir_resultados_filamento(filamento_id)
             else:

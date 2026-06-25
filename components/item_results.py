@@ -231,6 +231,7 @@ def carregar_resultados_cliente(cliente_id):
             frete,
             energia_hora,
             depreciacao_hora,
+            custo_pos_processamento_hora,
         )
 
         resumo["pedidos_total"] += 1
@@ -265,75 +266,36 @@ def carregar_resultados_filamento(filamento_id):
     resumo["peso_consumido_g"] = 0
     resumo["pecas_vinculadas"] = 0
 
-    tem_peca_filamentos = tabela_existe(conn, "peca_filamentos")
+    pedidos = conn.execute("""
+    SELECT
+        ped.codigo,
+        ped.peca_id,
+        pc.codigo,
+        pc.nome,
+        c.nome,
+        ped.quantidade,
+        ped.valor_unitario,
+        ped.desconto,
+        ped.frete,
+        ped.status,
+        ped.data_pedido,
+        COALESCE(pf.peso_g, 0),
+        COALESCE(pf.observacao, '')
+    FROM pedido_filamentos pf
+    LEFT JOIN pedidos ped ON pf.pedido_id = ped.id
+    LEFT JOIN pecas pc ON ped.peca_id = pc.id
+    LEFT JOIN clientes c ON ped.cliente_id = c.id
+    WHERE pf.filamento_id = ?
+    ORDER BY ped.id DESC
+    """, (filamento_id,)).fetchall()
 
-    if tem_peca_filamentos:
-        pedidos = conn.execute("""
-        SELECT DISTINCT
-            ped.codigo,
-            ped.peca_id,
-            pc.codigo,
-            pc.nome,
-            c.nome,
-            ped.quantidade,
-            ped.valor_unitario,
-            ped.desconto,
-            ped.frete,
-            ped.status,
-            ped.data_pedido,
-            COALESCE(pc.quantidade_lote, 1),
-            CASE
-                WHEN pf.filamento_id IS NOT NULL THEN COALESCE(pf.peso_g, 0)
-                ELSE COALESCE(pc.peso_g, 0)
-            END AS peso_filamento_lote
-        FROM pedidos ped
-        LEFT JOIN pecas pc ON ped.peca_id = pc.id
-        LEFT JOIN clientes c ON ped.cliente_id = c.id
-        LEFT JOIN peca_filamentos pf
-            ON pf.peca_id = pc.id
-           AND pf.filamento_id = ?
-        WHERE pf.filamento_id = ?
-           OR pc.filamento_id = ?
-        ORDER BY ped.id DESC
-        """, (filamento_id, filamento_id, filamento_id)).fetchall()
-
-        pecas_vinculadas = conn.execute("""
-        SELECT COUNT(DISTINCT p.id)
-        FROM pecas p
-        LEFT JOIN peca_filamentos pf
-            ON pf.peca_id = p.id
-           AND pf.filamento_id = ?
-        WHERE pf.filamento_id = ?
-           OR p.filamento_id = ?
-        """, (filamento_id, filamento_id, filamento_id)).fetchone()[0]
-    else:
-        pedidos = conn.execute("""
-        SELECT
-            ped.codigo,
-            ped.peca_id,
-            pc.codigo,
-            pc.nome,
-            c.nome,
-            ped.quantidade,
-            ped.valor_unitario,
-            ped.desconto,
-            ped.frete,
-            ped.status,
-            ped.data_pedido,
-            COALESCE(pc.quantidade_lote, 1),
-            COALESCE(pc.peso_g, 0) AS peso_filamento_lote
-        FROM pedidos ped
-        LEFT JOIN pecas pc ON ped.peca_id = pc.id
-        LEFT JOIN clientes c ON ped.cliente_id = c.id
-        WHERE pc.filamento_id = ?
-        ORDER BY ped.id DESC
-        """, (filamento_id,)).fetchall()
-
-        pecas_vinculadas = conn.execute("""
-        SELECT COUNT(*)
-        FROM pecas
-        WHERE filamento_id = ?
-        """, (filamento_id,)).fetchone()[0]
+    pecas_vinculadas = conn.execute("""
+    SELECT COUNT(DISTINCT ped.peca_id)
+    FROM pedido_filamentos pf
+    LEFT JOIN pedidos ped ON pf.pedido_id = ped.id
+    WHERE pf.filamento_id = ?
+      AND COALESCE(ped.status, '') <> 'Cancelado'
+    """, (filamento_id,)).fetchone()[0]
 
     resumo["pecas_vinculadas"] = pecas_vinculadas or 0
 
@@ -349,13 +311,7 @@ def carregar_resultados_filamento(filamento_id):
         frete = _valor(pedido[8], 0)
         status = pedido[9] or "Orçamento"
         data_pedido = data_br(pedido[10])
-        quantidade_lote = _valor(pedido[11], 1) or 1
-        peso_filamento_lote = _valor(pedido[12], 0)
-
-        if quantidade_lote <= 0:
-            quantidade_lote = 1
-
-        peso_consumido = (peso_filamento_lote / quantidade_lote) * quantidade
+        peso_consumido = _valor(pedido[11], 0)
 
         calc = calcular_pedido_conn(
             conn,
@@ -366,6 +322,7 @@ def carregar_resultados_filamento(filamento_id):
             frete,
             energia_hora,
             depreciacao_hora,
+            custo_pos_processamento_hora,
         )
 
         resumo["pedidos_total"] += 1
@@ -394,3 +351,4 @@ def carregar_resultados_filamento(filamento_id):
 
     conn.close()
     return _finalizar_resumo(resumo)
+

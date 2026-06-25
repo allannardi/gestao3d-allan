@@ -31,6 +31,31 @@ def limpar_cache_dados():
         pass
 
 
+STATUS_PEDIDOS = [
+    "Orçamento",
+    "Confirmado",
+    "Em Produção",
+    "Pronto",
+    "Entregue",
+    "Cancelado",
+]
+
+
+def atualizar_status_pedido(pedido_id, novo_status):
+    conn = conectar()
+    conn.execute(
+        """
+        UPDATE pedidos
+        SET status = ?
+        WHERE id = ?
+        """,
+        (novo_status, pedido_id)
+    )
+    conn.commit()
+    conn.close()
+    limpar_cache_dados()
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_css_base_cache():
     with open("assets/style.css", encoding="utf-8") as f:
@@ -517,35 +542,34 @@ def carregar_pedidos_listagem_cache():
     ORDER BY ped.id DESC
     """).fetchall()
 
-    peca_ids = sorted({pedido[5] for pedido in pedidos if pedido[5]})
-    filamentos_por_peca = {}
+    pedido_ids = sorted({pedido[0] for pedido in pedidos if pedido[0]})
+    filamentos_por_pedido = {}
 
-    if peca_ids:
-        placeholders = ",".join(["?"] * len(peca_ids))
+    if pedido_ids:
+        placeholders = ",".join(["?"] * len(pedido_ids))
 
         filamentos_rows = conn.execute(f"""
         SELECT
-            pf.peca_id,
+            pf.pedido_id,
             f.codigo,
             f.nome,
             f.material,
             f.cor,
-            f.custo_grama,
-            pf.peso_g,
-            pf.observacao
-        FROM peca_filamentos pf
+            COALESCE(pf.peso_g, 0),
+            COALESCE(pf.observacao, '')
+        FROM pedido_filamentos pf
         LEFT JOIN filamentos f ON pf.filamento_id = f.id
-        WHERE pf.peca_id IN ({placeholders})
+        WHERE pf.pedido_id IN ({placeholders})
         ORDER BY pf.id ASC
-        """, peca_ids).fetchall()
+        """, pedido_ids).fetchall()
 
         for row in filamentos_rows:
-            peca_id = row[0]
-            filamentos_por_peca.setdefault(peca_id, []).append(tuple(row[1:]))
+            pedido_id = row[0]
+            filamentos_por_pedido.setdefault(pedido_id, []).append(tuple(row[1:]))
 
     conn.close()
 
-    return [tuple(p) for p in pedidos], filamentos_por_peca
+    return [tuple(p) for p in pedidos], filamentos_por_pedido
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -688,7 +712,19 @@ def pedidos_mobile_css():
     )
 
 
-def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status, total, data_pedido="-"):
+def pedido_card(
+    codigo,
+    cliente_nome,
+    peca_codigo,
+    peca_nome,
+    quantidade,
+    status,
+    total,
+    data_pedido="-",
+    lucro=0,
+    margem_lucro=0,
+    lucro_hora=0
+):
     cor = cor_status_hex(status)
 
     codigo = escape(str(codigo))
@@ -698,6 +734,9 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
     status = escape(str(status))
     data_pedido = escape(data_br(data_pedido))
     total_fmt = escape(moeda(total))
+    lucro_fmt = escape(moeda(lucro))
+    margem_fmt = escape(f"{margem_lucro:.0f}%")
+    lucro_hora_fmt = escape(f"R$ {lucro_hora:.2f}/h".replace(".", ","))
 
     html = f"""
 <style>
@@ -798,7 +837,7 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
             position: relative;
             z-index: 1;
             display: grid !important;
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
             gap: 9px !important;
             margin-top: 14px !important;
         }}
@@ -809,11 +848,12 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
             border-radius: 14px !important;
             padding: 9px 8px !important;
             text-align: center !important;
+            min-width: 0 !important;
         }}
 
         .g3d-pedido-mini strong {{
             display: block !important;
-            font-size: 16px !important;
+            font-size: 15px !important;
             font-weight: 800 !important;
             color: #0A1A5C !important;
             line-height: 1 !important;
@@ -821,6 +861,17 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }}
+
+        .g3d-pedido-mini small {{
+            display: block !important;
+            font-size: 10px !important;
+            font-weight: 800 !important;
+            color: #1F8A4C !important;
+            line-height: 1 !important;
+            margin-top: -1px !important;
+            margin-bottom: 4px !important;
+            white-space: nowrap;
         }}
 
         .g3d-pedido-mini span {{
@@ -860,6 +911,10 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
 
     <div class="g3d-pedido-bottom">
         <div class="g3d-pedido-mini">
+            <strong>{data_pedido}</strong>
+            <span>Data</span>
+        </div>
+        <div class="g3d-pedido-mini">
             <strong>{quantidade:.0f}x</strong>
             <span>Qtd.</span>
         </div>
@@ -868,8 +923,13 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
             <span>Total</span>
         </div>
         <div class="g3d-pedido-mini">
-            <strong>{data_pedido}</strong>
-            <span>Data</span>
+            <strong>{lucro_fmt}</strong>
+            <small>{margem_fmt}</small>
+            <span>Lucro</span>
+        </div>
+        <div class="g3d-pedido-mini">
+            <strong>{lucro_hora_fmt}</strong>
+            <span>Lucro/hora</span>
         </div>
     </div>
 
@@ -883,40 +943,276 @@ def pedido_card(codigo, cliente_nome, peca_codigo, peca_nome, quantidade, status
         st.markdown(html, unsafe_allow_html=True)
 
 
+
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_filamentos_ativos():
     conn = conectar()
     filamentos = conn.execute("""
-    SELECT id, codigo, nome, material, cor
+    SELECT
+        id,
+        codigo,
+        nome,
+        material,
+        cor,
+        peso_original,
+        custo_grama
     FROM filamentos
     WHERE status IS NULL OR status = 'Ativo'
-    ORDER BY nome ASC
+    ORDER BY nome ASC, cor ASC
     """).fetchall()
     conn.close()
     return [tuple(f) for f in filamentos]
 
 
+def carregar_consumo_filamentos(excluir_pedido_id=None):
+    conn = conectar()
+
+    filtro_excluir = ""
+    params = []
+
+    if excluir_pedido_id:
+        filtro_excluir = "AND ped.id <> ?"
+        params.append(excluir_pedido_id)
+
+    consumo_rows = conn.execute(f"""
+    SELECT
+        pf.filamento_id,
+        COALESCE(SUM(COALESCE(pf.peso_g, 0)), 0)
+    FROM pedido_filamentos pf
+    LEFT JOIN pedidos ped ON pf.pedido_id = ped.id
+    WHERE COALESCE(ped.status, '') <> 'Cancelado'
+      {filtro_excluir}
+    GROUP BY pf.filamento_id
+    """, params).fetchall()
+
+    conn.close()
+    return {row[0]: row[1] for row in consumo_rows}
+
+
+def carregar_disponibilidade_filamentos(excluir_pedido_id=None):
+    filamentos = carregar_filamentos_ativos()
+    consumo = carregar_consumo_filamentos(excluir_pedido_id)
+
+    disponibilidade = []
+
+    for f in filamentos:
+        filamento_id = f[0]
+        peso_original = f[5] if f[5] else 0
+        consumido = consumo.get(filamento_id, 0) or 0
+        disponivel = peso_original - consumido
+
+        disponibilidade.append({
+            "id": filamento_id,
+            "codigo": f[1],
+            "nome": f[2],
+            "material": f[3],
+            "cor": f[4],
+            "peso_original": peso_original,
+            "custo_grama": f[6] if f[6] else 0,
+            "consumido": consumido,
+            "disponivel": disponivel,
+        })
+
+    return disponibilidade
+
+
+def carregar_requisitos_filamentos_peca(peca_id, quantidade):
+    conn = conectar()
+
+    peca = conn.execute("""
+    SELECT
+        peso_g,
+        COALESCE(quantidade_lote, 1)
+    FROM pecas
+    WHERE id = ?
+    """, (peca_id,)).fetchone()
+
+    if peca is None:
+        conn.close()
+        return []
+
+    peso_total_lote = peca[0] if peca[0] else 0
+    quantidade_lote = peca[1] if peca[1] and peca[1] > 0 else 1
+
+    referencias = conn.execute("""
+    SELECT
+        COALESCE(observacao, ''),
+        COALESCE(peso_g, 0)
+    FROM peca_filamentos
+    WHERE peca_id = ?
+    ORDER BY id ASC
+    """, (peca_id,)).fetchall()
+
+    conn.close()
+
+    requisitos = []
+
+    if referencias:
+        for idx, ref in enumerate(referencias, start=1):
+            uso = ref[0] if ref[0] else f"Filamento {idx}"
+            peso_lote = ref[1] if ref[1] else 0
+            peso_pedido = (peso_lote / quantidade_lote) * quantidade if quantidade_lote > 0 else 0
+
+            requisitos.append({
+                "uso": uso,
+                "peso_lote": peso_lote,
+                "peso_pedido": peso_pedido,
+            })
+    else:
+        peso_pedido = (peso_total_lote / quantidade_lote) * quantidade if quantidade_lote > 0 else 0
+        requisitos.append({
+            "uso": "Principal",
+            "peso_lote": peso_total_lote,
+            "peso_pedido": peso_pedido,
+        })
+
+    return requisitos
+
+
+def carregar_filamentos_pedido_registros(pedido_id):
+    conn = conectar()
+    registros = conn.execute("""
+    SELECT
+        filamento_id,
+        COALESCE(peso_g, 0),
+        COALESCE(observacao, '')
+    FROM pedido_filamentos
+    WHERE pedido_id = ?
+    ORDER BY id ASC
+    """, (pedido_id,)).fetchall()
+    conn.close()
+    return [tuple(r) for r in registros]
+
+
+def montar_filamentos_pedido(peca_id, quantidade, prefixo, pedido_id_atual=None, registros_existentes=None):
+    requisitos = carregar_requisitos_filamentos_peca(peca_id, quantidade)
+    disponibilidade = carregar_disponibilidade_filamentos(pedido_id_atual)
+    registros_existentes = registros_existentes or []
+
+    if not requisitos:
+        st.warning("Não foi possível identificar a necessidade de filamento desta peça.")
+        return []
+
+    if not disponibilidade:
+        st.warning("Cadastre pelo menos um filamento ativo antes de confirmar o pedido.")
+        return []
+
+    labels = []
+    por_label = {}
+
+    for item in disponibilidade:
+        label = (
+            f"{item['codigo']} - {item['nome']} | "
+            f"{item['material']} {item['cor']} | "
+            f"disp. {item['disponivel']:.1f} g"
+        )
+        labels.append(label)
+        por_label[label] = item
+
+    registros_saida = []
+
+    for idx, req in enumerate(requisitos):
+        uso = req["uso"]
+        peso_necessario = req["peso_pedido"] if req["peso_pedido"] else 0
+
+        st.markdown(f"**{uso}**")
+        st.caption(f"Necessário para este pedido: {peso_necessario:.1f} g")
+
+        filamento_existente_id = None
+
+        if idx < len(registros_existentes):
+            filamento_existente_id = registros_existentes[idx][0]
+
+        for reg in registros_existentes:
+            if (reg[2] or "") == uso:
+                filamento_existente_id = reg[0]
+                break
+
+        index_padrao = 0
+
+        if filamento_existente_id:
+            for pos, label in enumerate(labels):
+                if por_label[label]["id"] == filamento_existente_id:
+                    index_padrao = pos
+                    break
+
+        selecionado_label = st.selectbox(
+            f"Filamento deste pedido - {uso}",
+            labels,
+            index=index_padrao,
+            key=f"{prefixo}_filamento_real_{idx}"
+        )
+
+        selecionado = por_label[selecionado_label]
+        disponivel = selecionado["disponivel"]
+        saldo_apos_pedido = disponivel - peso_necessario
+
+        st.caption(
+            f"Disponível estimado: {disponivel:.1f} g · "
+            f"Após este pedido: {saldo_apos_pedido:.1f} g"
+        )
+
+        if saldo_apos_pedido < 0:
+            st.warning(
+                f"Atenção: este filamento não tem saldo estimado suficiente. "
+                f"Faltam {abs(saldo_apos_pedido):.1f} g."
+            )
+
+        registros_saida.append((
+            selecionado["id"],
+            peso_necessario,
+            uso
+        ))
+
+    return registros_saida
+
+
 def salvar_filamentos_pedido(conn, pedido_id, filamentos_pedido):
     conn.execute("DELETE FROM pedido_filamentos WHERE pedido_id = ?", (pedido_id,))
-    for filamento_id, observacao in filamentos_pedido:
+
+    for item in filamentos_pedido:
+        if len(item) == 3:
+            filamento_id, peso_g, observacao = item
+        else:
+            filamento_id, observacao = item
+            peso_g = 0
+
         if filamento_id:
             conn.execute("""
-            INSERT INTO pedido_filamentos (pedido_id, filamento_id, observacao)
-            VALUES (?, ?, ?)
-            """, (pedido_id, filamento_id, observacao))
+            INSERT INTO pedido_filamentos
+            (
+                pedido_id,
+                filamento_id,
+                peso_g,
+                observacao
+            )
+            VALUES (?, ?, ?, ?)
+            """, (
+                pedido_id,
+                filamento_id,
+                peso_g if peso_g else 0,
+                observacao
+            ))
 
 
 def carregar_filamentos_pedido(pedido_id):
     conn = conectar()
     filamentos = conn.execute("""
-    SELECT f.codigo, f.nome, f.material, f.cor, pf.observacao
+    SELECT
+        f.id,
+        f.codigo,
+        f.nome,
+        f.material,
+        f.cor,
+        COALESCE(pf.peso_g, 0),
+        COALESCE(pf.observacao, '')
     FROM pedido_filamentos pf
     LEFT JOIN filamentos f ON pf.filamento_id = f.id
     WHERE pf.pedido_id = ?
     ORDER BY pf.id ASC
     """, (pedido_id,)).fetchall()
     conn.close()
-    return filamentos
+    return [tuple(f) for f in filamentos]
 
 
 def duplicar_pedido(pedido_id):
@@ -977,6 +1273,18 @@ def duplicar_pedido(pedido_id):
     ))
 
     novo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    filamentos_original = conn.execute("""
+    SELECT
+        filamento_id,
+        COALESCE(peso_g, 0),
+        COALESCE(observacao, '')
+    FROM pedido_filamentos
+    WHERE pedido_id = ?
+    ORDER BY id ASC
+    """, (pedido_id,)).fetchall()
+
+    salvar_filamentos_pedido(conn, novo_id, filamentos_original)
 
     conn.commit()
     conn.close()
@@ -1071,6 +1379,19 @@ def duplicar_pedido_dialog(pedido_id):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (codigo, cliente_id_para_salvar, pedido[1], pedido[2], pedido[3], pedido[4], pedido[5], "Orçamento", pedido[6], str(date.today()), pedido[7], pedido[8]))
         novo_pedido_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        filamentos_original = conn.execute("""
+        SELECT
+            filamento_id,
+            COALESCE(peso_g, 0),
+            COALESCE(observacao, '')
+        FROM pedido_filamentos
+        WHERE pedido_id = ?
+        ORDER BY id ASC
+        """, (pedido_id,)).fetchall()
+
+        salvar_filamentos_pedido(conn, novo_pedido_id, filamentos_original)
+
         conn.commit()
         conn.close()
         st.success("Pedido duplicado com sucesso!")
@@ -1111,6 +1432,7 @@ def editar_pedido_dialog(pedido_id):
 
     clientes_atualizados = carregar_clientes()
     pecas_atualizadas = carregar_pecas()
+    filamentos_pedido_existentes = carregar_filamentos_pedido_registros(pedido_id)
 
     if not clientes_atualizados:
         st.warning("Cadastre pelo menos um cliente ativo antes de editar o pedido.")
@@ -1179,7 +1501,7 @@ def editar_pedido_dialog(pedido_id):
                 key=f"modal_desconto_{pedido_id}"
             )
 
-            status_lista = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+            status_lista = STATUS_PEDIDOS
 
             status_edit = st.selectbox(
                 "Status",
@@ -1232,9 +1554,23 @@ def editar_pedido_dialog(pedido_id):
             key=f"modal_observacoes_{pedido_id}"
         )
 
+        small_section("Filamento deste pedido")
+        peca_edit_para_filamento = pecas_opcoes_edit[peca_edit_label]
+        filamentos_pedido_edit = montar_filamentos_pedido(
+            peca_edit_para_filamento[0],
+            quantidade_edit,
+            f"editar_pedido_{pedido_id}",
+            pedido_id_atual=pedido_id,
+            registros_existentes=filamentos_pedido_existentes
+        )
+
         salvar_edicao = st.form_submit_button("Salvar Alterações")
 
     if salvar_edicao:
+
+        if not filamentos_pedido_edit:
+            st.warning("Selecione o filamento deste pedido.")
+            return
 
         cliente_edit = clientes_opcoes_edit[cliente_edit_label]
         peca_edit = pecas_opcoes_edit[peca_edit_label]
@@ -1271,6 +1607,8 @@ def editar_pedido_dialog(pedido_id):
             observacoes_edit,
             pedido_id,
         ))
+
+        salvar_filamentos_pedido(conn, pedido_id, filamentos_pedido_edit)
 
         conn.commit()
         conn.close()
@@ -1905,7 +2243,7 @@ if st.session_state["mostrar_form_pedido"]:
             else:
                 cliente_dados = clientes_opcoes[cliente_selecionado]
 
-            pedido_mobile_step("2. Peça e preço", "Escolha a peça, revise o valor sugerido e informe a quantidade.")
+            pedido_mobile_step("2. Filamento deste pedido", "Escolha a peça, informe a quantidade e confirme qual rolo/cor será usado.")
 
             pecas_opcoes = {f"{p[1]} - {p[2]}": p for p in pecas}
             peca_selecionada = st.selectbox("Peça", list(pecas_opcoes.keys()), key="novo_pedido_peca")
@@ -1927,7 +2265,6 @@ if st.session_state["mostrar_form_pedido"]:
                 st.session_state["novo_pedido_valor_unitario"] = float(preco_sugerido)
                 st.session_state["novo_pedido_peca_anterior"] = peca_dados[0]
 
-
             st.markdown(
                 f"""
                 <div style="
@@ -1948,9 +2285,16 @@ if st.session_state["mostrar_form_pedido"]:
                 unsafe_allow_html=True
             )
 
-            pedido_mobile_step("3. Valores", "Ajuste quantidade, venda, desconto e frete.")
-
             quantidade = st.number_input("Quantidade vendida", min_value=1.0, value=1.0, step=1.0, key="novo_pedido_quantidade")
+
+            filamentos_pedido = montar_filamentos_pedido(
+                peca_dados[0],
+                quantidade,
+                "novo_pedido"
+            )
+
+            pedido_mobile_step("3. Valores", "Ajuste venda, desconto e frete.")
+
             valor_unitario = st.number_input("Valor unitário de venda (R$)", min_value=0.0, step=1.0, key="novo_pedido_valor_unitario")
 
             col_v1, col_v2 = st.columns(2)
@@ -1968,7 +2312,7 @@ if st.session_state["mostrar_form_pedido"]:
             with col_s1:
                 status = st.selectbox(
                     "Status do pedido",
-                    ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"],
+                    STATUS_PEDIDOS,
                     key="novo_pedido_status",
                 )
 
@@ -1985,6 +2329,18 @@ if st.session_state["mostrar_form_pedido"]:
             observacoes = st.text_area("Observações", key="novo_pedido_observacoes")
 
         calc = calcular_pedido(peca_dados[0], quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_ref)
+        tempo_total_estimado_novo = calc["tempo_unitario"] * quantidade
+        lucro_hora_novo = calc["lucro"] / tempo_total_estimado_novo if tempo_total_estimado_novo > 0 else 0
+
+        if lucro_hora_novo >= meta_lucro_hora:
+            cor_lucro_hora_novo = "green"
+            status_lucro_hora_novo = "acima da meta"
+        elif lucro_hora_novo >= meta_lucro_hora * 0.6:
+            cor_lucro_hora_novo = "orange"
+            status_lucro_hora_novo = "atenção"
+        else:
+            cor_lucro_hora_novo = "red"
+            status_lucro_hora_novo = "abaixo da meta"
 
         with col_resumo:
 
@@ -2000,11 +2356,20 @@ if st.session_state["mostrar_form_pedido"]:
                 kpi_card("Total pedido", moeda(calc["total"]), "com desconto e frete", "green")
                 kpi_card("Lucro", moeda(calc["lucro"]), "estimado no pedido", "green")
                 kpi_card("Lucro unitário", moeda(calc["lucro_unitario"]), f"{calc['lucro_percentual']:.0f}% sobre custo", "gray")
+                kpi_card(
+                    "Lucro por hora",
+                    f"R$ {lucro_hora_novo:.2f}/h".replace(".", ","),
+                    status_lucro_hora_novo,
+                    cor_lucro_hora_novo
+                )
 
         if primary_button("Salvar Pedido", "salvar_novo_pedido"):
 
             if cliente_selecionado == opcao_novo_cliente and not novo_cliente_nome:
                 st.warning("Informe o nome do novo cliente.")
+
+            elif not filamentos_pedido:
+                st.warning("Selecione o filamento deste pedido.")
 
             else:
                 conn = conectar()
@@ -2080,6 +2445,9 @@ if st.session_state["mostrar_form_pedido"]:
                     observacoes,
                 ))
 
+                pedido_id_salvo = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                salvar_filamentos_pedido(conn, pedido_id_salvo, filamentos_pedido)
+
                 conn.commit()
                 conn.close()
 
@@ -2101,7 +2469,7 @@ busca = searchbar(
 )
 
 
-pedidos_base, filamentos_pecas_pedidos = carregar_pedidos_listagem_cache()
+pedidos_base, filamentos_pedidos = carregar_pedidos_listagem_cache()
 
 termo_busca = (busca or "").strip().lower()
 
@@ -2156,6 +2524,26 @@ for pedido in pedidos:
     observacoes = pedido[16] if pedido[16] else ""
 
     calc = calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custos_pecas_pedidos.get(peca_id))
+    margem_lucro = (calc["lucro"] / calc["total"]) * 100 if calc["total"] > 0 else 0
+    tempo_total_estimado = calc["tempo_unitario"] * quantidade
+    lucro_hora = calc["lucro"] / tempo_total_estimado if tempo_total_estimado > 0 else 0
+
+    if lucro_hora >= meta_lucro_hora:
+        cor_lucro_hora = "green"
+        status_lucro_hora = "acima da meta"
+    elif lucro_hora >= meta_lucro_hora * 0.6:
+        cor_lucro_hora = "orange"
+        status_lucro_hora = "atenção"
+    else:
+        cor_lucro_hora = "red"
+        status_lucro_hora = "abaixo da meta"
+
+    if margem_lucro >= 40:
+        cor_margem = "green"
+    elif margem_lucro >= 20:
+        cor_margem = "orange"
+    else:
+        cor_margem = "red"
 
     with st.container(border=True):
 
@@ -2168,7 +2556,43 @@ for pedido in pedidos:
             status=status,
             total=calc["total"],
             data_pedido=data_pedido,
+            lucro=calc["lucro"],
+            margem_lucro=margem_lucro,
+            lucro_hora=lucro_hora,
         )
+
+        status_rapido_key = f"pedido_status_rapido_{pedido_id}"
+        status_atual_key = f"{status_rapido_key}_status_atual"
+
+        if (
+            st.session_state.get(status_atual_key) != status
+            or st.session_state.get(status_rapido_key) not in STATUS_PEDIDOS
+        ):
+            st.session_state[status_rapido_key] = status
+            st.session_state[status_atual_key] = status
+
+        col_status_1, col_status_2 = st.columns([3, 1])
+
+        with col_status_1:
+            novo_status_rapido = st.selectbox(
+                "Alterar status sem abrir detalhes",
+                STATUS_PEDIDOS,
+                key=status_rapido_key
+            )
+
+        with col_status_2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+
+            if st.button(
+                "Salvar status",
+                key=f"salvar_status_rapido_{pedido_id}",
+                use_container_width=True,
+                disabled=(novo_status_rapido == status)
+            ):
+                atualizar_status_pedido(pedido_id, novo_status_rapido)
+                st.session_state[status_atual_key] = novo_status_rapido
+                st.success(f"Status do pedido {codigo} atualizado para {novo_status_rapido}.")
+                st.rerun()
 
         with st.expander("Detalhes, valores e ações"):
 
@@ -2190,19 +2614,21 @@ for pedido in pedidos:
                 st.write(f"**Data pedido:** {data_pedido}")
                 st.write(f"**Entrega:** {data_entrega}")
 
-            filamentos_peca_detalhe = filamentos_pecas_pedidos.get(peca_id, [])
+            filamentos_pedido_detalhe = filamentos_pedidos.get(pedido_id, [])
 
-            if filamentos_peca_detalhe:
-                small_section("Filamentos / cores da peça")
+            if filamentos_pedido_detalhe:
+                small_section("Filamento deste pedido")
 
-                for filamento in filamentos_peca_detalhe:
-                    peso_filamento = filamento[5] if filamento[5] else 0
-                    observacao_filamento = filamento[6] if filamento[6] else "-"
+                for filamento in filamentos_pedido_detalhe:
+                    peso_filamento = filamento[4] if filamento[4] else 0
+                    observacao_filamento = filamento[5] if filamento[5] else "-"
                     st.write(
                         f"- **{filamento[0]} - {filamento[1]}** | "
                         f"{filamento[2]} {filamento[3]} | "
                         f"{peso_filamento:.1f} g | {observacao_filamento}"
                     )
+            else:
+                st.caption("Este pedido ainda não possui filamento deste pedido confirmado.")
 
             small_section("Dados unitários da peça")
 
@@ -2222,27 +2648,6 @@ for pedido in pedidos:
 
             small_section("Resumo financeiro")
 
-            margem_lucro = (calc["lucro"] / calc["total"]) * 100 if calc["total"] > 0 else 0
-            tempo_total_estimado = calc["tempo_unitario"] * quantidade
-            lucro_hora = calc["lucro"] / tempo_total_estimado if tempo_total_estimado > 0 else 0
-
-            if lucro_hora >= meta_lucro_hora:
-                cor_lucro_hora = "green"
-                status_lucro_hora = "acima da meta"
-            elif lucro_hora >= meta_lucro_hora * 0.6:
-                cor_lucro_hora = "orange"
-                status_lucro_hora = "atenção"
-            else:
-                cor_lucro_hora = "red"
-                status_lucro_hora = "abaixo da meta"
-
-            if margem_lucro >= 40:
-                cor_margem = "green"
-            elif margem_lucro >= 20:
-                cor_margem = "orange"
-            else:
-                cor_margem = "red"
-
             col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
 
             with col_f1:
@@ -2259,32 +2664,6 @@ for pedido in pedidos:
 
             with col_f5:
                 st.write(f"**Total:** {moeda(calc['total'])}")
-
-            col_r1, col_r2, col_r3 = st.columns(3)
-
-            with col_r1:
-                kpi_card(
-                    "Lucro",
-                    moeda(calc["lucro"]),
-                    "resultado do pedido",
-                    "green" if calc["lucro"] > 0 else "red"
-                )
-
-            with col_r2:
-                kpi_card(
-                    "Margem de lucro",
-                    f"{margem_lucro:.0f}%",
-                    "lucro sobre venda",
-                    cor_margem
-                )
-
-            with col_r3:
-                kpi_card(
-                    "Lucro por hora",
-                    f"R$ {lucro_hora:.2f}/h".replace(".", ","),
-                    status_lucro_hora,
-                    cor_lucro_hora
-                )
 
             if observacoes:
                 st.write(f"**Observações:** {observacoes}")

@@ -741,8 +741,8 @@ def editar_peca_modal(peca_id_edit):
             key=f"modal_edit_quantidade_{peca_id_edit}"
         )
 
-        small_section("Filamentos e cores do lote")
-        st.caption("Informe o peso total de cada cor/material usado no lote completo.")
+        small_section("Filamentos de referência para cálculo")
+        st.caption("Informe o peso total de referência usado no lote completo.")
 
         registros_filamentos_edit = montar_registros_filamentos_existentes(
             filamentos_edit,
@@ -1408,10 +1408,10 @@ if st.session_state["mostrar_form_peca"]:
                 key="nova_peca_quantidade"
             )
 
-            mobile_form_step("2. Filamentos e cores", "Cadastre as cores e o peso de cada filamento usado no lote.")
+            mobile_form_step("2. Filamentos e cores", "Cadastre a referência de material para cálculo previsto. A cor real será confirmada no pedido.")
 
-            small_section("Filamentos e cores do lote")
-            st.caption("Informe o peso total de cada cor/material usado no lote completo.")
+            small_section("Filamentos de referência para cálculo")
+            st.caption("Informe o peso total de referência usado no lote completo.")
 
             filamentos_lote = montar_filamentos_lote(
                 "nova_peca",
@@ -1698,7 +1698,7 @@ for p in pecas:
 
         if filamentos_peca:
             filamento_resumo = (
-                f"{len(filamentos_peca)} filamentos / cores"
+                f"{len(filamentos_peca)} referências de cálculo"
                 if len(filamentos_peca) > 1
                 else f"{filamentos_peca[0][2]} - {filamentos_peca[0][3]}"
             )
@@ -1785,7 +1785,7 @@ for p in pecas:
                 st.write(f"**Lucro %:** {custos['lucro_percentual']:.0f}%")
 
             if filamentos_peca:
-                small_section("Filamentos e cores do lote")
+                small_section("Filamentos de referência para cálculo")
 
                 for f in filamentos_peca:
                     peso_filamento = f[7] if f[7] else 0

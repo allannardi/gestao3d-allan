@@ -288,10 +288,10 @@ def exibir_resultados_filamento(filamento_id):
         kpi_card("Peças", str(resultados["pecas_vinculadas"]), "peças vinculadas", "orange")
 
     with col_r3:
-        kpi_card("Faturamento", moeda(resultados["faturamento"]), "pedidos vinculados", "green")
+        kpi_card("Faturamento", moeda(resultados["faturamento"]), "proporcional ao uso", "green")
 
     with col_r4:
-        kpi_card("Lucro", moeda(resultados["lucro"]), "estimado", "green" if resultados["lucro"] >= 0 else "red")
+        kpi_card("Lucro", moeda(resultados["lucro"]), "proporcional", "green" if resultados["lucro"] >= 0 else "red")
 
     col_r5, col_r6 = st.columns(2)
 
@@ -313,7 +313,7 @@ def exibir_resultados_filamento(filamento_id):
                 f"{pedido['peca_codigo']} - {pedido['peca_nome']} | "
                 f"{pedido['quantidade']:.0f} un | "
                 f"{pedido['status']} | "
-                f"{total_fmt} | "
+                f"{total_fmt} proporcional | "
                 f"{pedido['peso_consumido_g']:.1f} g"
             )
 

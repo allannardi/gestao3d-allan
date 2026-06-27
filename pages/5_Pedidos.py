@@ -33,7 +33,7 @@ def limpar_cache_dados():
 
 STATUS_PEDIDOS = [
     "Orçamento",
-    "Confirmado",
+    "Encomendado",
     "Em Produção",
     "Pronto",
     "Entregue",
@@ -593,7 +593,7 @@ def carregar_custos_pedidos_cache(peca_ids, energia_hora, depreciacao_hora, cust
 def cor_status(status):
     if status in ["Entregue", "Pronto"]:
         return "green"
-    if status in ["Confirmado", "Em Produção"]:
+    if status in ["Encomendado", "Em Produção"]:
         return "blue"
     if status == "Orçamento":
         return "orange"
@@ -605,7 +605,7 @@ def cor_status(status):
 def cor_status_hex(status):
     mapa = {
         "Orçamento": "#B85C20",
-        "Confirmado": "#0C65AA",
+        "Encomendado": "#0C65AA",
         "Em Produção": "#100690",
         "Pronto": "#1F8A4C",
         "Entregue": "#1F8A4C",
@@ -2468,14 +2468,28 @@ busca = searchbar(
     key="buscar_pedido"
 )
 
+status_filtro = st.selectbox(
+    "Filtrar por status",
+    ["Todos"] + STATUS_PEDIDOS,
+    key="filtro_status_pedidos"
+)
+
 
 pedidos_base, filamentos_pedidos = carregar_pedidos_listagem_cache()
 
 termo_busca = (busca or "").strip().lower()
 
+pedidos = pedidos_base
+
+if status_filtro != "Todos":
+    pedidos = [
+        p for p in pedidos
+        if (p[12] or "Orçamento") == status_filtro
+    ]
+
 if termo_busca:
     pedidos = [
-        p for p in pedidos_base
+        p for p in pedidos
         if termo_busca in str(p[1] or "").lower()
         or termo_busca in str(p[3] or "").lower()
         or termo_busca in str(p[4] or "").lower()
@@ -2484,8 +2498,6 @@ if termo_busca:
         or termo_busca in str(p[12] or "").lower()
         or termo_busca in str(p[13] or "").lower()
     ]
-else:
-    pedidos = pedidos_base
 
 peca_ids_pedidos = tuple(sorted({pedido[5] for pedido in pedidos if pedido[5]}))
 custos_pecas_pedidos = carregar_custos_pedidos_cache(

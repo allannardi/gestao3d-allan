@@ -280,8 +280,15 @@ def carregar_resultados_filamento(filamento_id):
         ped.status,
         ped.data_pedido,
         COALESCE(pf.peso_g, 0),
-        COALESCE(pf.observacao, '')
+        COALESCE(pf.observacao, ''),
+        COALESCE(f.custo_grama, 0),
+        (
+            SELECT SUM(COALESCE(pf2.peso_g, 0))
+            FROM pedido_filamentos pf2
+            WHERE pf2.pedido_id = ped.id
+        ) AS peso_total_filamentos_pedido
     FROM pedido_filamentos pf
+    LEFT JOIN filamentos f ON pf.filamento_id = f.id
     LEFT JOIN pedidos ped ON pf.pedido_id = ped.id
     LEFT JOIN pecas pc ON ped.peca_id = pc.id
     LEFT JOIN clientes c ON ped.cliente_id = c.id
@@ -312,6 +319,7 @@ def carregar_resultados_filamento(filamento_id):
         status = pedido[9] or "Orçamento"
         data_pedido = data_br(pedido[10])
         peso_consumido = _valor(pedido[11], 0)
+        peso_total_filamentos_pedido = _valor(pedido[14], 0)
 
         calc = calcular_pedido_conn(
             conn,
@@ -325,6 +333,18 @@ def carregar_resultados_filamento(filamento_id):
             custo_pos_processamento_hora,
         )
 
+        if peso_total_filamentos_pedido <= 0:
+            peso_total_filamentos_pedido = calc["peso_unitario"] * quantidade
+
+        participacao_filamento = (
+            peso_consumido / peso_total_filamentos_pedido
+            if peso_total_filamentos_pedido > 0
+            else 0
+        )
+
+        valor_filamento = calc["total"] * participacao_filamento
+        lucro_filamento = calc["lucro"] * participacao_filamento
+
         resumo["pedidos_total"] += 1
 
         if status not in ["Entregue", "Cancelado"]:
@@ -333,8 +353,8 @@ def carregar_resultados_filamento(filamento_id):
         if status != "Cancelado":
             resumo["quantidade_total"] += quantidade
             resumo["peso_consumido_g"] += peso_consumido
-            resumo["faturamento"] += calc["total"]
-            resumo["lucro"] += calc["lucro"]
+            resumo["faturamento"] += valor_filamento
+            resumo["lucro"] += lucro_filamento
 
         resumo["pedidos"].append({
             "codigo": codigo,
@@ -344,9 +364,10 @@ def carregar_resultados_filamento(filamento_id):
             "quantidade": quantidade,
             "status": status,
             "data_pedido": data_pedido,
-            "total": calc["total"],
-            "lucro": calc["lucro"],
+            "total": valor_filamento,
+            "lucro": lucro_filamento,
             "peso_consumido_g": peso_consumido,
+            "participacao_filamento": participacao_filamento,
         })
 
     conn.close()

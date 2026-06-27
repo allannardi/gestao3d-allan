@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v11_01_filamento_no_pedido"
+SCHEMA_VERSION = "v11_05_melhorias_pedidos_dashboard_filamentos"
 
 
 def _get_secret(section, key, default=None):
@@ -309,12 +309,30 @@ def garantir_coluna(tabela, coluna, definicao):
     conn.close()
 
 
+def migrar_status_confirmado_para_encomendado():
+    """Atualiza pedidos antigos que ainda usam o status antigo Confirmado."""
+    conn = conectar()
+
+    try:
+        conn.execute("""
+        UPDATE pedidos
+        SET status = 'Encomendado'
+        WHERE status = 'Confirmado'
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
+    conn.close()
+
+
 def garantir_migracoes():
     garantir_coluna("pecas", "quantidade_lote", "REAL DEFAULT 1")
     garantir_coluna("filamentos", "status", "TEXT DEFAULT 'Ativo'")
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
     garantir_coluna("configuracoes", "custo_pos_processamento_hora", "REAL DEFAULT 0")
     garantir_coluna("pedido_filamentos", "peso_g", "REAL DEFAULT 0")
+    migrar_status_confirmado_para_encomendado()
 
     conn = conectar()
     conn.execute("""

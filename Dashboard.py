@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json
 from html import escape
 from collections import defaultdict
 from datetime import date, datetime
@@ -41,6 +42,27 @@ def nome_curto(texto, limite=42):
     if len(texto) <= limite:
         return texto
     return texto[:limite - 3] + "..."
+
+
+
+def rotulo_mes_grafico(data_pedido_dt):
+    meses = {
+        1: "jan",
+        2: "fev",
+        3: "mar",
+        4: "abr",
+        5: "mai",
+        6: "jun",
+        7: "jul",
+        8: "ago",
+        9: "set",
+        10: "out",
+        11: "nov",
+        12: "dez",
+    }
+    if not data_pedido_dt:
+        return "-"
+    return f"{meses.get(data_pedido_dt.month, str(data_pedido_dt.month).zfill(2))}/{str(data_pedido_dt.year)[-2:]}"
 
 
 def mobile_cor(nome):
@@ -407,7 +429,7 @@ def render_mobile_dashboard(
     pecas_resumo,
     status_resumo,
 ):
-    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+    status_ordem = ["Orçamento", "Encomendado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
     pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:5]
     max_qtd = max([dados["quantidade"] for _, dados in pecas_ranking], default=1)
 
@@ -518,13 +540,173 @@ def moeda(valor):
 def cor_status_hex(status):
     mapa = {
         "Orçamento": "#B85C20",
-        "Confirmado": "#0C65AA",
+        "Encomendado": "#0C65AA",
         "Em Produção": "#100690",
         "Pronto": "#1F8A4C",
         "Entregue": "#1F8A4C",
         "Cancelado": "#D11A2A",
     }
     return mapa.get(status, "#8A8F98")
+
+
+
+def render_ranking_faturamento_visual(itens_resumo, label_quantidade="pedidos", limite=8):
+    ranking = sorted(
+        itens_resumo.items(),
+        key=lambda item: item[1]["faturamento"],
+        reverse=True
+    )[:limite]
+
+    if not ranking:
+        st.caption("Nenhum dado cadastrado ainda.")
+        return
+
+    max_faturamento = max([dados["faturamento"] for _, dados in ranking], default=1)
+    if max_faturamento <= 0:
+        max_faturamento = 1
+
+    cards = ""
+
+    for posicao, (nome, dados) in enumerate(ranking, start=1):
+        faturamento = dados["faturamento"]
+        lucro = dados["lucro"]
+        qtd = dados.get(label_quantidade, dados.get("pedidos", dados.get("quantidade", 0)))
+        largura = max(6, int((faturamento / max_faturamento) * 100))
+        margem = (lucro / faturamento * 100) if faturamento > 0 else 0
+        tooltip = (
+            f"Faturamento: {moeda(faturamento)} | "
+            f"{label_quantidade.capitalize()}: {qtd:.0f} | "
+            f"Lucro: {moeda(lucro)} | Margem: {margem:.0f}%"
+        )
+
+        if label_quantidade == "quantidade":
+            qtd_texto = f"{qtd:.0f} un vendidas"
+        else:
+            qtd_texto = f"{qtd:.0f} pedidos"
+
+        cards += f"""
+        <div class="g3d-rank-row" title="{escape(tooltip)}">
+            <div class="g3d-rank-top">
+                <div class="g3d-rank-name">
+                    <span>{posicao}</span>
+                    <strong>{escape(nome_curto(nome, 46))}</strong>
+                </div>
+                <div class="g3d-rank-value">{escape(moeda(faturamento))}</div>
+            </div>
+            <div class="g3d-rank-meta">
+                <span>{qtd_texto}</span>
+                <span>Lucro {escape(moeda(lucro))}</span>
+            </div>
+            <div class="g3d-rank-bar">
+                <i style="width:{largura}%;"></i>
+            </div>
+        </div>
+        """
+
+    html = f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap');
+
+        .g3d-rank-wrap {{
+            font-family: 'Barlow', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #FFFFFF;
+            border: 1px solid rgba(185, 205, 220, 0.78);
+            border-radius: 20px;
+            padding: 14px;
+            box-shadow: 0 14px 32px rgba(10, 26, 92, 0.065);
+        }}
+
+        .g3d-rank-row {{
+            border: 1px solid #E6EEF3;
+            border-radius: 16px;
+            padding: 12px 13px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFE 100%);
+        }}
+
+        .g3d-rank-row:hover {{
+            background: #F7FBFE;
+        }}
+
+        .g3d-rank-top {{
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: center;
+            margin-bottom: 7px;
+        }}
+
+        .g3d-rank-name {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }}
+
+        .g3d-rank-name span {{
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            background: #F0F7FC;
+            color: #0C65AA;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex: 0 0 auto;
+        }}
+
+        .g3d-rank-name strong {{
+            color: #0A1A5C;
+            font-size: 13px;
+            line-height: 1.18;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .g3d-rank-value {{
+            color: #0A1A5C;
+            font-size: 13px;
+            font-weight: 800;
+            white-space: nowrap;
+        }}
+
+        .g3d-rank-meta {{
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: #5C6C74;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }}
+
+        .g3d-rank-bar {{
+            height: 8px;
+            background: #EAF3F9;
+            border-radius: 999px;
+            overflow: hidden;
+        }}
+
+        .g3d-rank-bar i {{
+            display: block;
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #0C65AA 0%, #58C3F0 100%);
+        }}
+    </style>
+
+    <div class="g3d-rank-wrap">
+        {cards}
+    </div>
+    """
+
+    altura = min(520, 36 + len(ranking) * 83)
+    st.components.v1.html(html, height=altura, scrolling=True)
 
 
 def render_status_visual(status_resumo, status_ordem):
@@ -845,6 +1027,8 @@ def largura_coluna(header):
         "Faturamento": "150px",
         "Lucro": "130px",
         "Pedidos": "100px",
+        "Mês": "110px",
+        "Peças": "100px",
     }
 
     return larguras.get(str(header), "160px")
@@ -854,6 +1038,7 @@ def coluna_numerica(header):
     return str(header) in [
         "Qtd.",
         "Pedidos",
+        "Peças",
         "Faturamento",
         "Lucro",
         "Total",
@@ -996,6 +1181,185 @@ def render_tabela(headers, rows, empty_message):
         height=altura,
         scrolling=True
     )
+
+
+def render_vendas_mes_chart(vendas_rows):
+    if not vendas_rows:
+        st.caption("Nenhuma venda com data registrada ainda.")
+        return
+
+    labels = [item["mes"] for item in vendas_rows]
+    faturamento = [round(float(item["faturamento"]), 2) for item in vendas_rows]
+    lucro = [round(float(item["lucro"]), 2) for item in vendas_rows]
+    margem = [round(float(item["margem"]), 1) for item in vendas_rows]
+    pedidos = [int(item["pedidos"]) for item in vendas_rows]
+    quantidade = [int(item["quantidade"]) for item in vendas_rows]
+
+    html = f"""
+    <div style="
+        background:#FFFFFF;
+        border:1px solid rgba(185, 205, 220, 0.78);
+        border-radius:20px;
+        padding:18px 18px 8px 18px;
+        box-shadow:0 14px 32px rgba(10, 26, 92, 0.065);
+    ">
+        <canvas id="g3d-vendas-mes-chart" style="width:100%;height:340px;"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const labels = {json.dumps(labels)};
+        const faturamento = {json.dumps(faturamento)};
+        const lucro = {json.dumps(lucro)};
+        const margem = {json.dumps(margem)};
+        const pedidos = {json.dumps(pedidos)};
+        const quantidade = {json.dumps(quantidade)};
+
+        const formatarMoeda = (valor) => new Intl.NumberFormat('pt-BR', {{
+            style: 'currency',
+            currency: 'BRL'
+        }}).format(valor || 0);
+
+        const canvas = document.getElementById('g3d-vendas-mes-chart');
+        const chartExistente = Chart.getChart(canvas);
+        if (chartExistente) {{
+            chartExistente.destroy();
+        }}
+
+        new Chart(canvas, {{
+            type: 'bar',
+            data: {{
+                labels: labels,
+                datasets: [
+                    {{
+                        type: 'bar',
+                        label: 'Vendas',
+                        data: faturamento,
+                        backgroundColor: 'rgba(12, 101, 170, 0.88)',
+                        borderColor: '#0C65AA',
+                        borderWidth: 1,
+                        borderRadius: 10,
+                        borderSkipped: false,
+                        barThickness: 22,
+                        order: 2
+                    }},
+                    {{
+                        type: 'bar',
+                        label: 'Lucro',
+                        data: lucro,
+                        backgroundColor: 'rgba(31, 138, 76, 0.88)',
+                        borderColor: '#1F8A4C',
+                        borderWidth: 1,
+                        borderRadius: 10,
+                        borderSkipped: false,
+                        barThickness: 22,
+                        order: 2
+                    }},
+                    {{
+                        type: 'line',
+                        label: 'Margem %',
+                        data: margem,
+                        yAxisID: 'y1',
+                        borderColor: '#100690',
+                        backgroundColor: '#100690',
+                        tension: 0.35,
+                        pointRadius: 4,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#FFFFFF',
+                        pointBorderColor: '#100690',
+                        pointBorderWidth: 2,
+                        order: 1
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {{
+                    mode: 'index',
+                    intersect: false
+                }},
+                layout: {{
+                    padding: {{ top: 10, right: 10, bottom: 0, left: 4 }}
+                }},
+                plugins: {{
+                    legend: {{
+                        position: 'top',
+                        align: 'start',
+                        labels: {{
+                            boxWidth: 14,
+                            boxHeight: 14,
+                            color: '#1E3137',
+                            font: {{
+                                family: 'Inter, system-ui, sans-serif',
+                                size: 12,
+                                weight: '600'
+                            }}
+                        }}
+                    }},
+                    tooltip: {{
+                        backgroundColor: 'rgba(10, 26, 92, 0.96)',
+                        titleFont: {{ family: 'Inter, system-ui, sans-serif', size: 13, weight: '700' }},
+                        bodyFont: {{ family: 'Inter, system-ui, sans-serif', size: 12 }},
+                        padding: 12,
+                        callbacks: {{
+                            label: function(context) {{
+                                const idx = context.dataIndex;
+                                if (context.dataset.label === 'Margem %') {{
+                                    return 'Margem: ' + margem[idx].toFixed(1) + '%';
+                                }}
+                                return context.dataset.label + ': ' + formatarMoeda(context.parsed.y);
+                            }},
+                            afterBody: function(items) {{
+                                if (!items.length) return [];
+                                const idx = items[0].dataIndex;
+                                return [
+                                    'Pedidos: ' + pedidos[idx],
+                                    'Peças vendidas: ' + quantidade[idx]
+                                ];
+                            }}
+                        }}
+                    }}
+                }},
+                scales: {{
+                    x: {{
+                        grid: {{ display: false }},
+                        ticks: {{
+                            color: '#5C6C74',
+                            font: {{ family: 'Inter, system-ui, sans-serif', size: 11, weight: '600' }}
+                        }}
+                    }},
+                    y: {{
+                        beginAtZero: true,
+                        grid: {{ color: '#E6EEF3' }},
+                        ticks: {{
+                            color: '#5C6C74',
+                            font: {{ family: 'Inter, system-ui, sans-serif', size: 11 }},
+                            callback: function(value) {{
+                                return formatarMoeda(value);
+                            }}
+                        }}
+                    }},
+                    y1: {{
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: {{ drawOnChartArea: false }},
+                        suggestedMax: 100,
+                        ticks: {{
+                            color: '#100690',
+                            font: {{ family: 'Inter, system-ui, sans-serif', size: 11, weight: '600' }},
+                            callback: function(value) {{
+                                return value + '%';
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }});
+    </script>
+    """
+
+    st.components.v1.html(html, height=420, scrolling=False)
 
 
 def render_ranking_pecas_faturamento(pecas_resumo):
@@ -1163,6 +1527,27 @@ def nome_curto(texto, limite=42):
     if len(texto) <= limite:
         return texto
     return texto[:limite - 3] + "..."
+
+
+
+def rotulo_mes_grafico(data_pedido_dt):
+    meses = {
+        1: "jan",
+        2: "fev",
+        3: "mar",
+        4: "abr",
+        5: "mai",
+        6: "jun",
+        7: "jul",
+        8: "ago",
+        9: "set",
+        10: "out",
+        11: "nov",
+        12: "dez",
+    }
+    if not data_pedido_dt:
+        return "-"
+    return f"{meses.get(data_pedido_dt.month, str(data_pedido_dt.month).zfill(2))}/{str(data_pedido_dt.year)[-2:]}"
 
 
 def mobile_cor(nome):
@@ -1529,7 +1914,7 @@ def render_mobile_dashboard(
     pecas_resumo,
     status_resumo,
 ):
-    status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+    status_ordem = ["Orçamento", "Encomendado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
     pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:5]
     max_qtd = max([dados["quantidade"] for _, dados in pecas_ranking], default=1)
 
@@ -1716,6 +2101,14 @@ clientes_resumo = defaultdict(lambda: {
     "lucro": 0,
 })
 
+vendas_mes_resumo = defaultdict(lambda: {
+    "mes": "",
+    "pedidos": 0,
+    "quantidade": 0,
+    "faturamento": 0,
+    "lucro": 0,
+})
+
 pedidos_recentes = []
 pedidos_abertos_lista = []
 
@@ -1770,6 +2163,14 @@ for pedido in pedidos:
         clientes_resumo[clientes_key]["faturamento"] += calc["total"]
         clientes_resumo[clientes_key]["lucro"] += calc["lucro"]
 
+        if data_pedido_dt:
+            mes_key = data_pedido_dt.strftime("%Y-%m")
+            vendas_mes_resumo[mes_key]["mes"] = rotulo_mes_grafico(data_pedido_dt)
+            vendas_mes_resumo[mes_key]["pedidos"] += 1
+            vendas_mes_resumo[mes_key]["quantidade"] += quantidade
+            vendas_mes_resumo[mes_key]["faturamento"] += calc["total"]
+            vendas_mes_resumo[mes_key]["lucro"] += calc["lucro"]
+
     status_resumo[status]["pedidos"] += 1
     status_resumo[status]["faturamento"] += calc["total"] if status != "Cancelado" else 0
     status_resumo[status]["lucro"] += calc["lucro"] if status != "Cancelado" else 0
@@ -1797,6 +2198,20 @@ for pedido in pedidos:
 lucro_hora = lucro_total / horas_total if horas_total > 0 else 0
 margem_media = (lucro_total / faturamento_total) * 100 if faturamento_total > 0 else 0
 ticket_medio = faturamento_total / len(pedidos) if len(pedidos) > 0 else 0
+
+vendas_mes_grafico = []
+for mes_key, dados in sorted(vendas_mes_resumo.items())[-12:]:
+    faturamento_mes_item = float(dados["faturamento"])
+    lucro_mes_item = float(dados["lucro"])
+    margem_mes_item = (lucro_mes_item / faturamento_mes_item * 100) if faturamento_mes_item > 0 else 0
+    vendas_mes_grafico.append({
+        "mes": dados["mes"],
+        "pedidos": dados["pedidos"],
+        "quantidade": dados["quantidade"],
+        "faturamento": faturamento_mes_item,
+        "lucro": lucro_mes_item,
+        "margem": margem_mes_item,
+    })
 
 
 sidebar()
@@ -1831,7 +2246,7 @@ with st.container(key="dashboard_desktop"):
     render_desktop_hero(
         label="Resumo executivo",
         value=moeda(faturamento_mes),
-        subtitle=f"{pedidos_fechados_mes:.0f} pedidos fechados no mês · lucro estimado {moeda(lucro_total)}",
+        subtitle=f"{pedidos_fechados_mes:.0f} pedidos fechados no mês · lucro estimado {moeda(lucro_mes)}",
         items=[
             {"label": "Pedidos abertos", "value": pedidos_abertos},
             {"label": "Faturamento geral", "value": moeda(faturamento_total)},
@@ -1840,17 +2255,33 @@ with st.container(key="dashboard_desktop"):
         ],
     )
 
+    col_status, col_abertos = st.columns(2)
+
+    with col_status:
+        section_title(
+            "Pedidos por status",
+            "Distribuição visual dos pedidos"
+        )
+        status_ordem = ["Orçamento", "Encomendado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
+        render_status_visual(status_resumo, status_ordem)
+
+    with col_abertos:
+        section_title(
+            "Pedidos abertos por peça",
+            "Lista rápida do que ainda precisa de ação"
+        )
+        render_tabela(
+            ["Pedido", "Peça", "Qtd.", "Status", "Data"],
+            pedidos_abertos_lista,
+            "Nenhum pedido aberto no momento."
+        )
+
     section_title(
-        "Pedidos recentes",
-        "Últimos pedidos registrados no sistema"
+        "Vendas por mês",
+        "Vendas e lucro em barras, com margem de lucro em linha"
     )
 
-    render_tabela(
-        ["Pedido", "Cliente", "Peça", "Qtd.", "Status", "Total"],
-        pedidos_recentes,
-        "Nenhum pedido cadastrado ainda."
-    )
-
+    render_vendas_mes_chart(vendas_mes_grafico)
 
     col_r1, col_r2 = st.columns(2)
 
@@ -1863,37 +2294,10 @@ with st.container(key="dashboard_desktop"):
 
     with col_r2:
         section_title(
-            "Pedidos por status",
-            "Distribuição visual dos pedidos"
+            "Clientes com maior faturamento",
+            "Ranking por faturamento; passe o mouse para ver pedidos, lucro e margem"
         )
-        status_ordem = ["Orçamento", "Confirmado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
-        render_status_visual(status_resumo, status_ordem)
-
-
-    col_a1, col_a2 = st.columns(2)
-
-    with col_a1:
-        section_title(
-            "Pedidos abertos por peça",
-            "Lista rápida do que ainda precisa de ação"
-        )
-        render_tabela(
-            ["Pedido", "Peça", "Qtd.", "Status", "Data"],
-            pedidos_abertos_lista,
-            "Nenhum pedido aberto no momento."
-        )
-
-    with col_a2:
-        section_title(
-            "Clientes com mais pedidos",
-            "Ranking por número de pedidos"
-        )
-        clientes_ranking = sorted(clientes_resumo.items(), key=lambda item: item[1]["pedidos"], reverse=True)[:5]
-        render_tabela(
-            ["Cliente", "Pedidos", "Faturamento", "Lucro"],
-            [[nome, f"{dados['pedidos']:.0f}", moeda(dados["faturamento"]), moeda(dados["lucro"])] for nome, dados in clientes_ranking],
-            "Nenhum cliente com pedido cadastrado ainda."
-        )
+        render_ranking_faturamento_visual(clientes_resumo, label_quantidade="pedidos", limite=8)
 
 
     st.write("")

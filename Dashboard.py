@@ -1196,14 +1196,35 @@ def render_vendas_mes_chart(vendas_rows):
     quantidade = [int(item["quantidade"]) for item in vendas_rows]
 
     html = f"""
-    <div style="
-        background:#FFFFFF;
-        border:1px solid rgba(185, 205, 220, 0.78);
-        border-radius:20px;
-        padding:18px 18px 8px 18px;
-        box-shadow:0 14px 32px rgba(10, 26, 92, 0.065);
-    ">
-        <canvas id="g3d-vendas-mes-chart" style="width:100%;height:340px;"></canvas>
+    <style>
+        .g3d-chart-card {{
+            background:#FFFFFF;
+            border:1px solid rgba(185, 205, 220, 0.78);
+            border-radius:20px;
+            padding:18px 18px 8px 18px;
+            box-shadow:0 14px 32px rgba(10, 26, 92, 0.065);
+        }}
+
+        .g3d-chart-card canvas {{
+            width:100%;
+            height:340px;
+        }}
+
+        @media (max-width: 768px) {{
+            .g3d-chart-card {{
+                border-radius:17px;
+                padding:14px 10px 6px 10px;
+                margin-top: 0;
+            }}
+
+            .g3d-chart-card canvas {{
+                height:300px;
+            }}
+        }}
+    </style>
+
+    <div class="g3d-chart-card">
+        <canvas id="g3d-vendas-mes-chart"></canvas>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -1914,11 +1935,97 @@ def render_mobile_dashboard(
     pecas_resumo,
     status_resumo,
 ):
+    """
+    Dashboard mobile recriada.
+
+    Mantém a assinatura antiga para não quebrar a chamada existente.
+    Usa variáveis globais já calculadas na Dashboard:
+    - vendas_mes_grafico
+    - clientes_resumo
+    """
     status_ordem = ["Orçamento", "Encomendado", "Em Produção", "Pronto", "Entregue", "Cancelado"]
-    pecas_ranking = sorted(pecas_resumo.items(), key=lambda item: item[1]["quantidade"], reverse=True)[:5]
-    max_qtd = max([dados["quantidade"] for _, dados in pecas_ranking], default=1)
+    vendas_mobile = globals().get("vendas_mes_grafico", [])
+    clientes_mobile = globals().get("clientes_resumo", {})
+
+    def card_empty(texto):
+        return f'<div class="g3d-mobile-empty">{escape(str(texto))}</div>'
+
+    def ranking_faturamento_mobile(itens_resumo, tipo="pecas", limite=5):
+        ranking = sorted(
+            itens_resumo.items(),
+            key=lambda item: item[1]["faturamento"],
+            reverse=True
+        )[:limite]
+
+        if not ranking:
+            return card_empty("Nenhum dado cadastrado ainda.")
+
+        max_faturamento = max([dados["faturamento"] for _, dados in ranking], default=1)
+        if max_faturamento <= 0:
+            max_faturamento = 1
+
+        cards = ""
+
+        for posicao, (nome, dados) in enumerate(ranking, start=1):
+            faturamento = dados.get("faturamento", 0)
+            lucro = dados.get("lucro", 0)
+            largura = max(6, int((faturamento / max_faturamento) * 100))
+            margem = (lucro / faturamento * 100) if faturamento > 0 else 0
+
+            if tipo == "pecas":
+                qtd = dados.get("quantidade", 0)
+                qtd_txt = f"{qtd:.0f} un vendidas"
+            else:
+                qtd = dados.get("pedidos", 0)
+                qtd_txt = f"{qtd:.0f} pedidos"
+
+            cards += f"""
+            <div class="g3d-mobile-rank-card">
+                <div class="g3d-mobile-rank-head">
+                    <div class="g3d-mobile-rank-title">{posicao}. {escape(nome_curto(nome, 44))}</div>
+                    <div class="g3d-mobile-rank-value">{escape(moeda(faturamento))}</div>
+                </div>
+                <div class="g3d-mobile-order-meta" style="margin-bottom:8px;">
+                    <span>{escape(qtd_txt)}</span>
+                    <span>Lucro {escape(moeda(lucro))}</span>
+                </div>
+                <div class="g3d-mobile-order-meta" style="margin-bottom:8px;">
+                    <span>Margem {margem:.0f}%</span>
+                    <span></span>
+                </div>
+                <div class="g3d-mobile-progress"><span style="width:{largura}%;"></span></div>
+            </div>
+            """
+
+        return cards
+
+    total_status = sum(dados["pedidos"] for dados in status_resumo.values())
+    status_cards = ""
+
+    for status in status_ordem:
+        dados = status_resumo.get(status)
+        if not dados:
+            continue
+
+        quantidade = dados.get("pedidos", 0)
+        percentual = int((quantidade / total_status) * 100) if total_status else 0
+        cor = cor_status_hex(status)
+
+        status_cards += f"""
+        <div class="g3d-mobile-status-row">
+            <div class="g3d-mobile-status-row-head">
+                <span>{mobile_status_chip(status)}</span>
+                <strong>{quantidade:.0f} · {percentual}%</strong>
+            </div>
+            <div class="g3d-mobile-progress"><span style="width:{percentual}%;background:{cor};"></span></div>
+        </div>
+        """
+
+    if not status_cards:
+        status_cards = card_empty("Nenhum pedido cadastrado ainda.")
 
     pedidos_cards = ""
+
     for item in pedidos_abertos_lista[:5]:
         codigo, peca, qtd, status, data = item
         pedidos_cards += f"""
@@ -1936,48 +2043,36 @@ def render_mobile_dashboard(
         """
 
     if not pedidos_cards:
-        pedidos_cards = '<div class="g3d-mobile-empty">Nenhum pedido aberto no momento.</div>'
+        pedidos_cards = card_empty("Nenhum pedido aberto no momento.")
 
-    ranking_cards = ""
-    for nome, dados in pecas_ranking:
-        largura = int((dados["quantidade"] / max_qtd) * 100) if max_qtd else 0
-        ranking_cards += f"""
-        <div class="g3d-mobile-rank-card">
-            <div class="g3d-mobile-rank-head">
-                <div class="g3d-mobile-rank-title">{escape(nome_curto(nome, 46))}</div>
-                <div class="g3d-mobile-rank-value">{dados["quantidade"]:.0f} un.</div>
-            </div>
-            <div class="g3d-mobile-progress"><span style="width:{largura}%;"></span></div>
-        </div>
-        """
+    pecas_cards = ranking_faturamento_mobile(pecas_resumo, tipo="pecas", limite=5)
+    clientes_cards = ranking_faturamento_mobile(clientes_mobile, tipo="clientes", limite=5)
 
-    if not ranking_cards:
-        ranking_cards = '<div class="g3d-mobile-empty">Nenhuma peça vendida ainda.</div>'
+    html_topo = f"""
+    <style>
+        @media (max-width: 768px) {{
+            .g3d-mobile-dashboard-v2 {{
+                font-family: 'Barlow', system-ui, sans-serif;
+                padding-bottom: 8px;
+                width: 100%;
+            }}
 
-    total_status = sum(dados["pedidos"] for dados in status_resumo.values())
-    status_cards = ""
-    for status in status_ordem:
-        dados = status_resumo.get(status)
-        if not dados:
-            continue
-        quantidade = dados["pedidos"]
-        percentual = int((quantidade / total_status) * 100) if total_status else 0
-        cor = cor_status_hex(status)
-        status_cards += f"""
-        <div class="g3d-mobile-status-row">
-            <div class="g3d-mobile-status-row-head">
-                <span>{mobile_status_chip(status)}</span>
-                <strong>{quantidade:.0f} · {percentual}%</strong>
-            </div>
-            <div class="g3d-mobile-progress"><span style="width:{percentual}%;background:{cor};"></span></div>
-        </div>
-        """
+            .g3d-mobile-dashboard-v2 .g3d-mobile-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }}
 
-    if not status_cards:
-        status_cards = '<div class="g3d-mobile-empty">Nenhum pedido cadastrado ainda.</div>'
+            .g3d-mobile-dashboard-v2 .g3d-mobile-rank-card,
+            .g3d-mobile-dashboard-v2 .g3d-mobile-order-card,
+            .g3d-mobile-dashboard-v2 .g3d-mobile-status-row {{
+                width: 100%;
+                box-sizing: border-box;
+            }}
+        }}
+    </style>
 
-    html = f"""
-    <div class="g3d-mobile-dashboard">
+    <div class="g3d-mobile-dashboard g3d-mobile-dashboard-v2">
         <div class="g3d-mobile-hero">
             <div class="g3d-mobile-hero-label">Resumo do mês</div>
             <div class="g3d-mobile-hero-value">{escape(moeda(faturamento_mes))}</div>
@@ -1991,14 +2086,30 @@ def render_mobile_dashboard(
             {mobile_kpi_html("Lucro/Hora", f"R$ {lucro_hora:.2f}".replace(".", ","), f"meta {moeda(meta_lucro)}/h", "green" if lucro_hora >= meta_lucro else "gray")}
         </div>
 
-        {mobile_section_header("Pedidos abertos", "O que precisa de atenção agora")}
+        {mobile_section_header("Pedidos por status", "Distribuição atual")}
+        <div class="g3d-mobile-list">{status_cards}</div>
+
+        {mobile_section_header("Pedidos abertos por peça", "O que precisa de atenção agora")}
         <div class="g3d-mobile-list">{pedidos_cards}</div>
 
-        {mobile_section_header("Peças mais vendidas", "Ranking por quantidade")}
-        <div class="g3d-mobile-list">{ranking_cards}</div>
+        {mobile_section_header("Vendas por mês", "Vendas, lucro e margem")}
+    </div>
+    """
 
-        {mobile_section_header("Status dos pedidos", "Distribuição atual")}
-        <div>{status_cards}</div>
+    try:
+        st.html(html_topo)
+    except AttributeError:
+        st.markdown(html_topo, unsafe_allow_html=True)
+
+    render_vendas_mes_chart(vendas_mobile)
+
+    html_base = f"""
+    <div class="g3d-mobile-dashboard g3d-mobile-dashboard-v2">
+        {mobile_section_header("Peças com maior faturamento", "Ranking por faturamento")}
+        <div class="g3d-mobile-list">{pecas_cards}</div>
+
+        {mobile_section_header("Clientes com maior faturamento", "Ranking por faturamento")}
+        <div class="g3d-mobile-list">{clientes_cards}</div>
 
         <div class="g3d-mobile-foot">
             Horas vendidas: <strong>{horas_total:.1f}h</strong> ·
@@ -2008,9 +2119,10 @@ def render_mobile_dashboard(
     """
 
     try:
-        st.html(html)
+        st.html(html_base)
     except AttributeError:
-        st.markdown(html, unsafe_allow_html=True)
+        st.markdown(html_base, unsafe_allow_html=True)
+
 
 
 inicializar_banco()

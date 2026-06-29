@@ -6,6 +6,7 @@ from components.mobile_nav import mobile_bottom_nav
 from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
+from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
@@ -39,6 +40,9 @@ def carregar_css_base_cache():
 
 def moeda(valor):
     return f"R$ {valor:.2f}".replace(".", ",")
+
+def moeda_md(valor):
+    return moeda(valor).replace("$", "\\$")
 
 
 def garantir_colunas_pecas():
@@ -1239,6 +1243,63 @@ def render_nova_peca_mobile_resumo(custos):
         st.markdown(html, unsafe_allow_html=True)
 
 
+
+def montar_alertas_peca_operador(
+    nome,
+    categoria,
+    quantidade_lote,
+    peso_g,
+    tempo_impressao_h,
+    tempo_pos,
+    filamentos_lote,
+    custos,
+    meta_lucro_hora,
+):
+    alertas = []
+
+    if not nome:
+        alertas.append("Informe o nome da peça antes de salvar.")
+
+    if not categoria:
+        alertas.append("Informe ou selecione uma categoria.")
+
+    if quantidade_lote <= 0:
+        alertas.append("Informe a quantidade produzida no lote.")
+
+    if not filamentos_lote:
+        alertas.append("Informe pelo menos um filamento de referência para cálculo.")
+
+    if peso_g <= 0:
+        alertas.append("Informe o peso total do lote. Sem peso, o custo de material fica incorreto.")
+
+    if tempo_impressao_h <= 0:
+        alertas.append("Informe o tempo total de impressão do lote. Sem tempo, o lucro por hora fica incorreto.")
+
+    if tempo_pos < 0:
+        alertas.append("O tempo de pós-processamento não pode ser negativo.")
+
+    if custos["custo_unitario"] <= 0:
+        alertas.append("O custo unitário está zerado. Confira filamento, peso, tempo e acessórios.")
+
+    if custos["preco_unitario"] <= 0:
+        alertas.append("O preço sugerido está zerado. Confira custos e margem padrão.")
+
+    if meta_lucro_hora > 0 and tempo_impressao_h > 0 and custos["lucro_hora"] < meta_lucro_hora:
+        lucro_hora_txt = f"R$ {custos['lucro_hora']:.2f}/h".replace(".", ",").replace("$", "\\$")
+        alertas.append(
+            f"Lucro por hora abaixo da meta configurada. Atual: {lucro_hora_txt}; meta: {moeda_md(meta_lucro_hora)}/h."
+        )
+
+    return alertas
+
+
+def render_alertas_peca_operador(alertas):
+    if alertas:
+        st.warning("Antes de salvar, confira:\n\n- " + "\n- ".join(alertas))
+    else:
+        st.empty()
+
+
 st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
@@ -1249,7 +1310,29 @@ mobile_bottom_nav("pecas")
 inject_desktop_visual()
 peca_mobile_form_css()
 mobile_summary_css("pecas")
-header("Peças", "Biblioteca de modelos e cálculo de rentabilidade")
+
+
+@st.dialog("Ajuda - Peças")
+def ajuda_pecas():
+    st.markdown(
+        """
+        Use esta tela para cadastrar os produtos/modelos que você vende.
+
+        **Regra mais importante:** peso, tempo, acessórios e embalagem devem ser informados para o **lote completo**.
+
+        Exemplo: se você imprime 10 chaveiros juntos:
+        - **Quantidade produzida no lote:** 10
+        - **Peso do lote:** peso total dos 10 chaveiros
+        - **Tempo do lote:** tempo total da impressão
+        - **Acessórios do lote:** quantidade total usada nos 10 chaveiros
+
+        O sistema divide automaticamente os valores para calcular custo, preço sugerido, lucro e lucro por hora por unidade.
+
+        **Filamento de referência** é apenas uma previsão para cálculo. A cor/rolo real usado na venda é confirmado no pedido.
+        """
+    )
+
+header_with_help("Peças", "Biblioteca de modelos e cálculo de rentabilidade", ajuda_pecas, key="ajuda_pecas_link")
 
 
 base_pecas = carregar_base_pecas_cache()
@@ -1356,6 +1439,8 @@ section_title(
     "Cadastre modelos, calcule custos por lote e acompanhe os valores unitários"
 )
 
+st.caption("Dica: em peças, sempre pense no lote completo. O sistema calcula os valores por unidade automaticamente.")
+
 
 if "mostrar_form_peca" not in st.session_state:
     st.session_state["mostrar_form_peca"] = False
@@ -1381,14 +1466,19 @@ if st.session_state["mostrar_form_peca"]:
 
             mobile_form_step("1. Identificação", "Informe nome, categoria e quantidade produzida no lote.")
 
-            nome = st.text_input("Nome da Peça", key="nova_peca_nome")
+            nome = st.text_input(
+                "Nome da Peça",
+                key="nova_peca_nome",
+                help="Use um nome fácil de reconhecer no pedido. Ex.: Chaveiro Taça Copa do Mundo."
+            )
 
             opcoes_categoria = (categorias_pecas if categorias_pecas else ["Outro"]) + ["+ Adicionar nova categoria"]
 
             categoria_opcao = st.selectbox(
                 "Categoria",
                 opcoes_categoria,
-                key="nova_peca_categoria"
+                key="nova_peca_categoria",
+                help="A categoria ajuda a organizar a busca e os relatórios. Ex.: chaveiros, decoração, personalizados."
             )
 
             if categoria_opcao == "+ Adicionar nova categoria":
@@ -1405,7 +1495,8 @@ if st.session_state["mostrar_form_peca"]:
                 min_value=1,
                 value=1,
                 step=1,
-                key="nova_peca_quantidade"
+                key="nova_peca_quantidade",
+                help="Informe quantas unidades saem juntas nessa impressão. Ex.: se imprime 10 chaveiros de uma vez, informe 10."
             )
 
             mobile_form_step("2. Filamentos e cores", "Cadastre a referência de material para cálculo previsto. A cor real será confirmada no pedido.")
@@ -1438,7 +1529,8 @@ if st.session_state["mostrar_form_peca"]:
                 min_value=0.0,
                 value=0.0,
                 step=0.25,
-                key="nova_peca_tempo"
+                key="nova_peca_tempo",
+                help="Informe o tempo total da impressão do lote completo, não o tempo de uma unidade isolada."
             )
 
             tempo_pos = st.number_input(
@@ -1446,7 +1538,8 @@ if st.session_state["mostrar_form_peca"]:
                 min_value=0.0,
                 value=0.0,
                 step=1.0,
-                key="nova_peca_pos"
+                key="nova_peca_pos",
+                help="Tempo gasto depois da impressão: retirar suporte, limpar, pintar, montar, embalar ou fazer acabamento."
             )
 
             embalagem_custo = st.number_input(
@@ -1454,7 +1547,8 @@ if st.session_state["mostrar_form_peca"]:
                 min_value=0.0,
                 value=0.0,
                 step=0.01,
-                key="nova_peca_embalagem"
+                key="nova_peca_embalagem",
+                help="Informe o custo total de embalagem do lote completo. Se não houver embalagem, deixe zero."
             )
 
             mobile_form_step("4. Acessórios", "Inclua argolas, embalagens, imãs ou outros itens usados no lote.")
@@ -1485,10 +1579,26 @@ if st.session_state["mostrar_form_peca"]:
 
             small_section("Arquivos e links")
 
-            link_stl = st.text_input("Link do STL / Arquivo", key="nova_peca_link_stl")
-            link_modelo = st.text_input("Link do modelo na internet", key="nova_peca_link_modelo")
-            pasta_drive = st.text_input("Pasta Google Drive", key="nova_peca_drive")
-            observacoes = st.text_area("Observações", key="nova_peca_obs")
+            link_stl = st.text_input(
+                "Link do STL / Arquivo",
+                key="nova_peca_link_stl",
+                help="Opcional. Use para guardar o caminho ou link do arquivo usado na impressão."
+            )
+            link_modelo = st.text_input(
+                "Link do modelo na internet",
+                key="nova_peca_link_modelo",
+                help="Opcional. Use para guardar o link do modelo original, MakerWorld, Printables ou similar."
+            )
+            pasta_drive = st.text_input(
+                "Pasta Google Drive",
+                key="nova_peca_drive",
+                help="Opcional. Link da pasta onde ficam fotos, arquivos, referências ou variações da peça."
+            )
+            observacoes = st.text_area(
+                "Observações",
+                key="nova_peca_obs",
+                help="Use para registrar detalhes de impressão, cor, acabamento, montagem ou cuidados especiais."
+            )
 
         custos = calcular_custos(
             peso_g,
@@ -1504,6 +1614,18 @@ if st.session_state["mostrar_form_peca"]:
             meta_lucro_hora,
             quantidade_lote,
             filamentos_lote
+        )
+
+        alertas_peca_operador = montar_alertas_peca_operador(
+            nome=nome,
+            categoria=categoria,
+            quantidade_lote=quantidade_lote,
+            peso_g=peso_g,
+            tempo_impressao_h=tempo_impressao_h,
+            tempo_pos=tempo_pos,
+            filamentos_lote=filamentos_lote,
+            custos=custos,
+            meta_lucro_hora=meta_lucro_hora,
         )
 
         with col_resumo:
@@ -1531,10 +1653,21 @@ if st.session_state["mostrar_form_peca"]:
                 kpi_card("Preço unitário", moeda(custos["preco_unitario"]), "sugerido por peça", "green")
                 kpi_card("Lucro unitário", moeda(custos["lucro_unitario"]), "por peça", custos["cor"])
 
+                render_alertas_peca_operador(alertas_peca_operador)
+
         if primary_button("Salvar Peça", "salvar_nova_peca"):
 
             if not nome:
                 st.warning("Informe o nome da peça.")
+
+            elif not filamentos_lote:
+                st.warning("Informe pelo menos um filamento de referência para cálculo.")
+
+            elif peso_g <= 0:
+                st.warning("Informe o peso total do lote antes de salvar.")
+
+            elif tempo_impressao_h <= 0:
+                st.warning("Informe o tempo total de impressão do lote antes de salvar.")
 
             else:
                 conn = conectar()
@@ -1605,7 +1738,7 @@ if st.session_state["mostrar_form_peca"]:
                 conn.commit()
                 conn.close()
 
-                st.success("Peça cadastrada com sucesso!")
+                st.success(f"Peça {codigo} cadastrada com sucesso! Ela já pode ser usada em novos pedidos.")
                 st.session_state["mostrar_form_peca"] = False
                 st.session_state.pop("nova_peca_qtd_filamentos", None)
                 limpar_cache_dados()

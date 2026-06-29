@@ -6,6 +6,7 @@ from components.sidebar import sidebar
 from components.mobile_nav import mobile_bottom_nav
 from components.desktop_visual import inject_desktop_visual
 from components.header import header
+from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
@@ -65,6 +66,9 @@ def carregar_css_base_cache():
 def moeda(valor):
     return f"R$ {valor:.2f}".replace(".", ",")
 
+def moeda_md(valor):
+    return moeda(valor).replace("$", "\\$")
+
 
 def garantir_tabelas():
     conn = conectar()
@@ -102,7 +106,8 @@ def garantir_tabelas():
         canal TEXT,
         data_pedido TEXT,
         data_entrega_prevista TEXT,
-        observacoes TEXT
+        observacoes TEXT,
+        impressora_id INTEGER
     )
     """)
 
@@ -111,6 +116,29 @@ def garantir_tabelas():
 
     if "quantidade_lote" not in nomes_colunas_pecas:
         conn.execute("ALTER TABLE pecas ADD COLUMN quantidade_lote REAL DEFAULT 1")
+
+    colunas_pedidos = conn.execute("PRAGMA table_info(pedidos)").fetchall()
+    nomes_colunas_pedidos = [coluna[1] for coluna in colunas_pedidos]
+
+    if "impressora_id" not in nomes_colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN impressora_id INTEGER")
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS impressoras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        marca TEXT,
+        modelo TEXT,
+        status TEXT DEFAULT 'Ativa',
+        consumo_w REAL DEFAULT 200,
+        valor_kwh REAL DEFAULT 0.65,
+        energia_hora REAL DEFAULT 0,
+        depreciacao_hora REAL DEFAULT 0.75,
+        observacoes TEXT,
+        is_padrao INTEGER DEFAULT 0,
+        data_cadastro TEXT
+    )
+    """)
 
     conn.commit()
     conn.close()
@@ -154,6 +182,52 @@ def carregar_configuracoes():
     conn.close()
 
     return tuple(config) if config else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def carregar_impressoras_pedidos():
+    conn = conectar()
+
+    impressoras = conn.execute("""
+    SELECT
+        id,
+        codigo,
+        marca,
+        modelo,
+        status,
+        COALESCE(energia_hora, 0),
+        COALESCE(depreciacao_hora, 0),
+        COALESCE(is_padrao, 0)
+    FROM impressoras
+    WHERE status IS NULL OR status = 'Ativa' OR COALESCE(is_padrao, 0) = 1
+    ORDER BY COALESCE(is_padrao, 0) DESC, id ASC
+    """).fetchall()
+
+    conn.close()
+
+    return [tuple(i) for i in impressoras]
+
+
+def selecionar_impressora_padrao(impressoras):
+    if not impressoras:
+        return None
+
+    for impressora in impressoras:
+        if impressora[7]:
+            return impressora
+
+    return impressoras[0]
+
+
+def label_impressora(impressora):
+    if not impressora:
+        return "Impressora padrão"
+
+    codigo = impressora[1] or "-"
+    marca = impressora[2] or ""
+    modelo = impressora[3] or ""
+    sufixo = " · Padrão" if impressora[7] else ""
+    return f"{codigo} - {marca} {modelo}{sufixo}".strip()
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -535,10 +609,17 @@ def carregar_pedidos_listagem_cache():
         ped.canal,
         ped.data_pedido,
         ped.data_entrega_prevista,
-        ped.observacoes
+        ped.observacoes,
+        ped.impressora_id,
+        i.codigo,
+        i.marca,
+        i.modelo,
+        i.energia_hora,
+        i.depreciacao_hora
     FROM pedidos ped
     LEFT JOIN clientes c ON ped.cliente_id = c.id
     LEFT JOIN pecas pc ON ped.peca_id = pc.id
+    LEFT JOIN impressoras i ON ped.impressora_id = i.id
     ORDER BY ped.id DESC
     """).fetchall()
 
@@ -1140,7 +1221,8 @@ def montar_filamentos_pedido(peca_id, quantidade, prefixo, pedido_id_atual=None,
             f"Filamento deste pedido - {uso}",
             labels,
             index=index_padrao,
-            key=f"{prefixo}_filamento_real_{idx}"
+            key=f"{prefixo}_filamento_real_{idx}",
+            help="Escolha o rolo/material que será realmente usado neste pedido. Isso alimenta o controle de consumo em gramas."
         )
 
         selecionado = por_label[selecionado_label]
@@ -1228,7 +1310,8 @@ def duplicar_pedido(pedido_id):
         frete,
         canal,
         data_entrega_prevista,
-        observacoes
+        observacoes,
+        impressora_id
     FROM pedidos
     WHERE id = ?
     """, (pedido_id,)).fetchone()
@@ -1253,9 +1336,10 @@ def duplicar_pedido(pedido_id):
         canal,
         data_pedido,
         data_entrega_prevista,
-        observacoes
+        observacoes,
+        impressora_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
     (
         codigo,
@@ -1270,6 +1354,7 @@ def duplicar_pedido(pedido_id):
         str(date.today()),
         pedido[7],
         pedido[8],
+        pedido[9],
     ))
 
     novo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1296,7 +1381,7 @@ def duplicar_pedido(pedido_id):
 def duplicar_pedido_dialog(pedido_id):
     conn = conectar()
     pedido = conn.execute("""
-    SELECT cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, canal, data_entrega_prevista, observacoes
+    SELECT cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, canal, data_entrega_prevista, observacoes, impressora_id
     FROM pedidos
     WHERE id = ?
     """, (pedido_id,)).fetchone()
@@ -1375,9 +1460,9 @@ def duplicar_pedido_dialog(pedido_id):
 
         codigo = gerar_codigo_pedido(conn)
         conn.execute("""
-        INSERT INTO pedidos (codigo, cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, status, canal, data_pedido, data_entrega_prevista, observacoes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (codigo, cliente_id_para_salvar, pedido[1], pedido[2], pedido[3], pedido[4], pedido[5], "Orçamento", pedido[6], str(date.today()), pedido[7], pedido[8]))
+        INSERT INTO pedidos (codigo, cliente_id, peca_id, quantidade, valor_unitario, desconto, frete, status, canal, data_pedido, data_entrega_prevista, observacoes, impressora_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (codigo, cliente_id_para_salvar, pedido[1], pedido[2], pedido[3], pedido[4], pedido[5], "Orçamento", pedido[6], str(date.today()), pedido[7], pedido[8], pedido[9]))
         novo_pedido_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         filamentos_original = conn.execute("""
@@ -1416,7 +1501,8 @@ def editar_pedido_dialog(pedido_id):
         canal,
         data_pedido,
         data_entrega_prevista,
-        observacoes
+        observacoes,
+        impressora_id
     FROM pedidos
     WHERE id = ?
     """, (pedido_id,)).fetchone()
@@ -1433,6 +1519,7 @@ def editar_pedido_dialog(pedido_id):
     clientes_atualizados = carregar_clientes()
     pecas_atualizadas = carregar_pecas()
     filamentos_pedido_existentes = carregar_filamentos_pedido_registros(pedido_id)
+    impressoras_editaveis = carregar_impressoras_pedidos()
 
     if not clientes_atualizados:
         st.warning("Cadastre pelo menos um cliente ativo antes de editar o pedido.")
@@ -1481,6 +1568,28 @@ def editar_pedido_dialog(pedido_id):
             index=peca_index,
             key=f"modal_peca_{pedido_id}"
         )
+
+        impressora_edit_id = None
+
+        if impressoras_editaveis:
+            impressora_labels_edit = [label_impressora(i) for i in impressoras_editaveis]
+            impressora_index = 0
+
+            for idx_imp, impressora_item in enumerate(impressoras_editaveis):
+                if impressora_item[0] == pedido[12]:
+                    impressora_index = idx_imp
+                    break
+                if pedido[12] is None and impressora_item[7]:
+                    impressora_index = idx_imp
+
+            impressora_edit_label = st.selectbox(
+                "Impressora",
+                impressora_labels_edit,
+                index=impressora_index,
+                key=f"modal_impressora_{pedido_id}",
+                help="Escolha a impressora usada neste pedido."
+            )
+            impressora_edit_id = impressoras_editaveis[impressora_labels_edit.index(impressora_edit_label)][0]
 
         col_e1, col_e2 = st.columns(2)
 
@@ -1590,7 +1699,8 @@ def editar_pedido_dialog(pedido_id):
             canal = ?,
             data_pedido = ?,
             data_entrega_prevista = ?,
-            observacoes = ?
+            observacoes = ?,
+            impressora_id = ?
         WHERE id = ?
         """,
         (
@@ -1605,6 +1715,7 @@ def editar_pedido_dialog(pedido_id):
             data_pedido_edit,
             data_entrega_edit,
             observacoes_edit,
+            impressora_edit_id,
             pedido_id,
         ))
 
@@ -2082,23 +2193,120 @@ def render_novo_pedido_mobile_resumo(calc, preco_sugerido, margem_padrao):
         st.markdown(html, unsafe_allow_html=True)
 
 
+def montar_alertas_pedido_operador(
+    cliente_selecionado,
+    opcao_novo_cliente,
+    novo_cliente_nome,
+    filamentos_pedido,
+    calc,
+    valor_unitario,
+    quantidade,
+    lucro_hora,
+    meta_lucro_hora,
+    tempo_total_estimado,
+    desconto,
+    frete,
+):
+    alertas = []
+
+    if cliente_selecionado == opcao_novo_cliente and not novo_cliente_nome:
+        alertas.append("Informe o nome do novo cliente antes de salvar.")
+
+    if not filamentos_pedido:
+        alertas.append("Selecione o filamento/rolo usado neste pedido.")
+
+    if quantidade <= 0:
+        alertas.append("Informe a quantidade vendida.")
+
+    if valor_unitario <= 0:
+        alertas.append("Informe o valor unitário de venda.")
+
+    if calc["custo_unitario"] <= 0:
+        alertas.append("A peça está sem custo calculado. Confira peso, tempo, filamento e acessórios no cadastro da peça.")
+
+    if calc["tempo_unitario"] <= 0:
+        alertas.append("A peça está sem tempo calculado. Confira o tempo de impressão no cadastro da peça.")
+
+    if calc["lucro"] < 0:
+        alertas.append(f"Este pedido está com prejuízo estimado de {moeda_md(abs(calc['lucro']))}.")
+
+    elif tempo_total_estimado > 0 and meta_lucro_hora > 0 and lucro_hora < meta_lucro_hora:
+        preco_minimo_meta = (
+            calc["custo_total"] + (meta_lucro_hora * tempo_total_estimado) + desconto - frete
+        ) / quantidade if quantidade > 0 else 0
+
+        if preco_minimo_meta > valor_unitario:
+            alertas.append(
+                f"Lucro por hora abaixo da meta. Para atingir a meta, o preço mínimo estimado seria {moeda_md(preco_minimo_meta)} por unidade."
+            )
+        else:
+            alertas.append("Lucro por hora abaixo da meta configurada.")
+
+    return alertas
+
+
+def render_conferencia_pedido_operador(
+    cliente_nome,
+    peca_nome,
+    quantidade,
+    status,
+    canal,
+    data_entrega,
+    filamentos_pedido,
+    calc,
+    lucro_hora,
+    alertas,
+):
+    if alertas:
+        st.warning("Antes de salvar, confira:\n\n- " + "\n- ".join(alertas))
+    else:
+        st.empty()
+
 st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
 inicializar_banco()
+garantir_tabelas()
 sidebar()
 mobile_bottom_nav("pedidos")
 inject_desktop_visual()
 pedidos_mobile_css()
 pedidos_resumo_mobile_css()
 pedido_mobile_form_css()
-header("Pedidos", "Cadastro e acompanhamento dos pedidos da Gestão 3D")
+
+
+@st.dialog("Ajuda - Pedidos")
+def ajuda_pedidos():
+    st.markdown(
+        """
+        Use esta tela para registrar e acompanhar as vendas.
+
+        **Fluxo recomendado:**
+        1. Clique em **+ Novo Pedido**.
+        2. Escolha ou cadastre o cliente.
+        3. Selecione a peça vendida e a quantidade.
+        4. Escolha o **filamento/rolo usado neste pedido**.
+        5. Confira preço, lucro e lucro por hora antes de salvar.
+
+        **Legenda dos status:**
+        - **Orçamento:** cliente ainda não confirmou.
+        - **Encomendado:** cliente confirmou, mas a produção ainda não começou.
+        - **Em Produção:** peça sendo impressa, montada ou finalizada.
+        - **Pronto:** pedido finalizado, aguardando entrega.
+        - **Entregue:** pedido concluído.
+        - **Cancelado:** pedido não será produzido e não entra nos resultados.
+        """
+    )
+
+header_with_help("Pedidos", "Cadastro e acompanhamento dos pedidos da Gestão 3D", ajuda_pedidos, key="ajuda_pedidos_link")
 
 
 energia_hora, depreciacao_hora, margem_padrao, meta_lucro_hora, custo_pos_processamento_hora = carregar_configuracoes()
 clientes = carregar_clientes()
 pecas = carregar_pecas()
+impressoras_pedidos = carregar_impressoras_pedidos()
+impressora_padrao_pedido = selecionar_impressora_padrao(impressoras_pedidos)
 
 
 resumo_pedidos = carregar_pedidos_resumo_cache(
@@ -2141,7 +2349,7 @@ with st.container(key="pedidos_desktop_resumo"):
 
 section_title(
     "Cadastro de Pedido",
-    "Vincule cliente, peça, quantidade vendida e valor de venda"
+    "Fluxo guiado para registrar uma venda com menos risco de erro"
 )
 
 
@@ -2161,6 +2369,7 @@ if st.session_state["mostrar_form_pedido"]:
     else:
 
         small_section("Novo Pedido")
+        st.caption("Preencha as etapas em sequência. O sistema mostra alertas se encontrar algum ponto de atenção.")
 
         col_form, col_resumo = st.columns([2, 1])
 
@@ -2175,7 +2384,8 @@ if st.session_state["mostrar_form_pedido"]:
             cliente_selecionado = st.selectbox(
                 "Cliente",
                 cliente_labels,
-                key="novo_pedido_cliente"
+                key="novo_pedido_cliente",
+                help="Escolha um cliente já cadastrado ou use a primeira opção para cadastrar rapidamente um novo cliente."
             )
 
             cliente_dados = None
@@ -2246,13 +2456,46 @@ if st.session_state["mostrar_form_pedido"]:
             pedido_mobile_step("2. Filamento deste pedido", "Escolha a peça, informe a quantidade e confirme qual rolo/cor será usado.")
 
             pecas_opcoes = {f"{p[1]} - {p[2]}": p for p in pecas}
-            peca_selecionada = st.selectbox("Peça", list(pecas_opcoes.keys()), key="novo_pedido_peca")
+            peca_selecionada = st.selectbox(
+                "Peça",
+                list(pecas_opcoes.keys()),
+                key="novo_pedido_peca",
+                help="Escolha o produto vendido. O sistema usa o cadastro da peça para buscar custo, tempo, peso e preço sugerido."
+            )
             peca_dados = pecas_opcoes[peca_selecionada]
+
+            if impressoras_pedidos:
+                impressora_labels = [label_impressora(i) for i in impressoras_pedidos]
+                impressora_padrao_index = 0
+
+                for idx_imp, impressora_item in enumerate(impressoras_pedidos):
+                    if impressora_item[7]:
+                        impressora_padrao_index = idx_imp
+                        break
+
+                impressora_selecionada_label = st.selectbox(
+                    "Impressora",
+                    impressora_labels,
+                    index=impressora_padrao_index,
+                    key="novo_pedido_impressora",
+                    help="Escolha em qual impressora este pedido será produzido. O custo usa energia/hora e depreciação/hora desta impressora."
+                )
+
+                impressora_dados_pedido = impressoras_pedidos[impressora_labels.index(impressora_selecionada_label)]
+                impressora_id_pedido = impressora_dados_pedido[0]
+                energia_hora_pedido = impressora_dados_pedido[5] if impressora_dados_pedido[5] else energia_hora
+                depreciacao_hora_pedido = impressora_dados_pedido[6] if impressora_dados_pedido[6] else depreciacao_hora
+            else:
+                impressora_dados_pedido = None
+                impressora_id_pedido = None
+                energia_hora_pedido = energia_hora
+                depreciacao_hora_pedido = depreciacao_hora
+                st.info("Nenhuma impressora ativa encontrada. O pedido usará a configuração padrão atual.")
 
             custo_ref = carregar_custos_pedidos_cache(
                 tuple([peca_dados[0]]),
-                energia_hora,
-                depreciacao_hora,
+                energia_hora_pedido,
+                depreciacao_hora_pedido,
                 custo_pos_processamento_hora
             ).get(peca_dados[0], {
                 "custo_unitario": 0,
@@ -2285,7 +2528,14 @@ if st.session_state["mostrar_form_pedido"]:
                 unsafe_allow_html=True
             )
 
-            quantidade = st.number_input("Quantidade vendida", min_value=1.0, value=1.0, step=1.0, key="novo_pedido_quantidade")
+            quantidade = st.number_input(
+                "Quantidade vendida",
+                min_value=1.0,
+                value=1.0,
+                step=1.0,
+                key="novo_pedido_quantidade",
+                help="Informe quantas unidades o cliente comprou. O sistema usa esse número para calcular custo, lucro e consumo de filamento."
+            )
 
             filamentos_pedido = montar_filamentos_pedido(
                 peca_dados[0],
@@ -2295,15 +2545,35 @@ if st.session_state["mostrar_form_pedido"]:
 
             pedido_mobile_step("3. Valores", "Ajuste venda, desconto e frete.")
 
-            valor_unitario = st.number_input("Valor unitário de venda (R$)", min_value=0.0, step=1.0, key="novo_pedido_valor_unitario")
+            valor_unitario = st.number_input(
+                "Valor unitário de venda (R$)",
+                min_value=0.0,
+                step=1.0,
+                key="novo_pedido_valor_unitario",
+                help="Preço cobrado por unidade. O sistema sugere um valor com base no custo e na margem configurada."
+            )
 
             col_v1, col_v2 = st.columns(2)
 
             with col_v1:
-                desconto = st.number_input("Desconto total (R$)", min_value=0.0, value=0.0, step=1.0, key="novo_pedido_desconto")
+                desconto = st.number_input(
+                    "Desconto total (R$)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=1.0,
+                    key="novo_pedido_desconto",
+                    help="Informe o desconto total do pedido, não o desconto por unidade."
+                )
 
             with col_v2:
-                frete = st.number_input("Frete cobrado (R$)", min_value=0.0, value=0.0, step=1.0, key="novo_pedido_frete")
+                frete = st.number_input(
+                    "Frete cobrado (R$)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=1.0,
+                    key="novo_pedido_frete",
+                    help="Valor de frete cobrado do cliente. Se não houver frete, deixe zero."
+                )
 
             pedido_mobile_step("4. Acompanhamento", "Defina status, canal, datas e observações.")
 
@@ -2314,23 +2584,48 @@ if st.session_state["mostrar_form_pedido"]:
                     "Status do pedido",
                     STATUS_PEDIDOS,
                     key="novo_pedido_status",
+                    help="Use Encomendado quando o cliente confirmou, Em Produção quando já começou, Pronto quando terminou e Entregue quando foi concluído."
                 )
 
                 canal = st.selectbox(
                     "Canal",
                     ["WhatsApp", "Instagram", "Marketplace", "Indicação", "Feira / Evento", "Outro"],
                     key="novo_pedido_canal",
+                    help="Informe por onde este pedido chegou. Isso ajuda a entender quais canais geram mais vendas."
                 )
 
             with col_s2:
                 data_pedido = st.date_input("Data do pedido", value=date.today(), format="DD/MM/YYYY", key="novo_pedido_data")
                 data_entrega = st.date_input("Entrega prevista", value=date.today(), format="DD/MM/YYYY", key="novo_pedido_entrega")
 
-            observacoes = st.text_area("Observações", key="novo_pedido_observacoes")
+            observacoes = st.text_area(
+                "Observações",
+                key="novo_pedido_observacoes",
+                help="Use este campo para registrar combinados, preferências do cliente, cor especial, prazo ou detalhes da entrega."
+            )
 
-        calc = calcular_pedido(peca_dados[0], quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_ref)
+        calc = calcular_pedido(peca_dados[0], quantidade, valor_unitario, desconto, frete, energia_hora_pedido, depreciacao_hora_pedido, custo_ref)
         tempo_total_estimado_novo = calc["tempo_unitario"] * quantidade
         lucro_hora_novo = calc["lucro"] / tempo_total_estimado_novo if tempo_total_estimado_novo > 0 else 0
+
+        cliente_nome_conferencia = novo_cliente_nome if cliente_selecionado == opcao_novo_cliente else cliente_dados[2]
+        if not cliente_nome_conferencia:
+            cliente_nome_conferencia = "Novo cliente ainda sem nome"
+
+        alertas_pedido_operador = montar_alertas_pedido_operador(
+            cliente_selecionado=cliente_selecionado,
+            opcao_novo_cliente=opcao_novo_cliente,
+            novo_cliente_nome=novo_cliente_nome,
+            filamentos_pedido=filamentos_pedido,
+            calc=calc,
+            valor_unitario=valor_unitario,
+            quantidade=quantidade,
+            lucro_hora=lucro_hora_novo,
+            meta_lucro_hora=meta_lucro_hora,
+            tempo_total_estimado=tempo_total_estimado_novo,
+            desconto=desconto,
+            frete=frete,
+        )
 
         if lucro_hora_novo >= meta_lucro_hora:
             cor_lucro_hora_novo = "green"
@@ -2356,11 +2651,26 @@ if st.session_state["mostrar_form_pedido"]:
                 kpi_card("Total pedido", moeda(calc["total"]), "com desconto e frete", "green")
                 kpi_card("Lucro", moeda(calc["lucro"]), "estimado no pedido", "green")
                 kpi_card("Lucro unitário", moeda(calc["lucro_unitario"]), f"{calc['lucro_percentual']:.0f}% sobre custo", "gray")
+                if impressora_dados_pedido:
+                    kpi_card("Impressora", impressora_dados_pedido[1], f"{impressora_dados_pedido[2]} {impressora_dados_pedido[3]}", "blue")
                 kpi_card(
                     "Lucro por hora",
                     f"R$ {lucro_hora_novo:.2f}/h".replace(".", ","),
                     status_lucro_hora_novo,
                     cor_lucro_hora_novo
+                )
+
+                render_conferencia_pedido_operador(
+                    cliente_nome=cliente_nome_conferencia,
+                    peca_nome=peca_selecionada,
+                    quantidade=quantidade,
+                    status=status,
+                    canal=canal,
+                    data_entrega=data_entrega,
+                    filamentos_pedido=filamentos_pedido,
+                    calc=calc,
+                    lucro_hora=lucro_hora_novo,
+                    alertas=alertas_pedido_operador,
                 )
 
         if primary_button("Salvar Pedido", "salvar_novo_pedido"):
@@ -2426,9 +2736,10 @@ if st.session_state["mostrar_form_pedido"]:
                     canal,
                     data_pedido,
                     data_entrega_prevista,
-                    observacoes
+                    observacoes,
+                    impressora_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     codigo,
@@ -2443,6 +2754,7 @@ if st.session_state["mostrar_form_pedido"]:
                     str(data_pedido),
                     str(data_entrega),
                     observacoes,
+                    impressora_id_pedido,
                 ))
 
                 pedido_id_salvo = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -2451,7 +2763,7 @@ if st.session_state["mostrar_form_pedido"]:
                 conn.commit()
                 conn.close()
 
-                st.success("Pedido cadastrado com sucesso!")
+                st.success(f"Pedido {codigo} cadastrado com sucesso! Próximo passo: acompanhar o status na lista de pedidos.")
                 st.session_state["mostrar_form_pedido"] = False
                 limpar_cache_dados()
                 st.rerun()
@@ -2499,13 +2811,28 @@ if termo_busca:
         or termo_busca in str(p[13] or "").lower()
     ]
 
-peca_ids_pedidos = tuple(sorted({pedido[5] for pedido in pedidos if pedido[5]}))
-custos_pecas_pedidos = carregar_custos_pedidos_cache(
-    peca_ids_pedidos,
-    energia_hora,
-    depreciacao_hora,
-    custo_pos_processamento_hora
-)
+custos_pecas_pedidos = {}
+
+for pedido_custo in pedidos:
+    peca_id_custo = pedido_custo[5]
+    if not peca_id_custo:
+        continue
+
+    energia_pedido_custo = pedido_custo[21] if len(pedido_custo) > 21 and pedido_custo[21] is not None else energia_hora
+    depreciacao_pedido_custo = pedido_custo[22] if len(pedido_custo) > 22 and pedido_custo[22] is not None else depreciacao_hora
+    chave_custo = (
+        peca_id_custo,
+        round(float(energia_pedido_custo), 6),
+        round(float(depreciacao_pedido_custo), 6),
+    )
+
+    if chave_custo not in custos_pecas_pedidos:
+        custos_pecas_pedidos[chave_custo] = carregar_custos_pedidos_cache(
+            tuple([peca_id_custo]),
+            energia_pedido_custo,
+            depreciacao_pedido_custo,
+            custo_pos_processamento_hora
+        ).get(peca_id_custo)
 
 pedidos = paginar_itens(
     pedidos,
@@ -2534,8 +2861,20 @@ for pedido in pedidos:
     data_pedido = data_br(pedido[14])
     data_entrega = data_br(pedido[15])
     observacoes = pedido[16] if pedido[16] else ""
+    impressora_id = pedido[17] if len(pedido) > 17 else None
+    impressora_codigo = pedido[18] if len(pedido) > 18 and pedido[18] else "-"
+    impressora_marca = pedido[19] if len(pedido) > 19 and pedido[19] else ""
+    impressora_modelo = pedido[20] if len(pedido) > 20 and pedido[20] else ""
+    energia_pedido = pedido[21] if len(pedido) > 21 and pedido[21] is not None else energia_hora
+    depreciacao_pedido = pedido[22] if len(pedido) > 22 and pedido[22] is not None else depreciacao_hora
+    impressora_nome = f"{impressora_codigo} - {impressora_marca} {impressora_modelo}".strip() if impressora_id else "Impressora padrão"
+    chave_custo_pedido = (
+        peca_id,
+        round(float(energia_pedido), 6),
+        round(float(depreciacao_pedido), 6),
+    )
 
-    calc = calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custos_pecas_pedidos.get(peca_id))
+    calc = calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_pedido, depreciacao_pedido, custos_pecas_pedidos.get(chave_custo_pedido))
     margem_lucro = (calc["lucro"] / calc["total"]) * 100 if calc["total"] > 0 else 0
     tempo_total_estimado = calc["tempo_unitario"] * quantidade
     lucro_hora = calc["lucro"] / tempo_total_estimado if tempo_total_estimado > 0 else 0
@@ -2625,6 +2964,8 @@ for pedido in pedidos:
             with col_d4:
                 st.write(f"**Data pedido:** {data_pedido}")
                 st.write(f"**Entrega:** {data_entrega}")
+
+            st.write(f"**Impressora:** {impressora_nome}")
 
             filamentos_pedido_detalhe = filamentos_pedidos.get(pedido_id, [])
 

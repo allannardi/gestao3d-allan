@@ -7,6 +7,7 @@ from components.mobile_nav import mobile_bottom_nav
 from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
+from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
@@ -171,29 +172,37 @@ def editar_cliente_modal(cliente_id):
 
     with st.form("editar_cliente_form_modal"):
 
-        nome_edit = st.text_input("Nome", value=cliente[1])
+        nome_edit = st.text_input(
+            "Nome",
+            value=cliente[1],
+            help="Campo obrigatório. Use o nome pelo qual você identifica o cliente."
+        )
 
         tipos_lista = ["Pessoa Física", "Pessoa Jurídica"]
 
         tipo_edit = st.selectbox(
             "Tipo",
             tipos_lista,
-            index=tipos_lista.index(cliente[2]) if cliente[2] in tipos_lista else 0
+            index=tipos_lista.index(cliente[2]) if cliente[2] in tipos_lista else 0,
+            help="Escolha Pessoa Física para clientes comuns e Pessoa Jurídica para empresas."
         )
 
         documento_edit = st.text_input(
             "CPF / CNPJ",
-            value=cliente[3] if cliente[3] else ""
+            value=cliente[3] if cliente[3] else "",
+            help="Opcional. Preencha apenas se você quiser manter esse dado no cadastro."
         )
 
         telefone_edit = st.text_input(
             "Telefone / WhatsApp",
-            value=cliente[4] if cliente[4] else ""
+            value=cliente[4] if cliente[4] else "",
+            help="Opcional, mas recomendado para contato e entrega."
         )
 
         email_edit = st.text_input(
             "E-mail",
-            value=cliente[5] if cliente[5] else ""
+            value=cliente[5] if cliente[5] else "",
+            help="Opcional. Útil para clientes empresariais, orçamentos ou comprovantes."
         )
 
         mobile_form_step("2. Contato e localização", "Preencha WhatsApp, e-mail, cidade, estado e origem.")
@@ -203,18 +212,21 @@ def editar_cliente_modal(cliente_id):
         with col_form1:
             cidade_edit = st.text_input(
                 "Cidade",
-                value=cliente[6] if cliente[6] else ""
+                value=cliente[6] if cliente[6] else "",
+                help="Opcional. Ajuda a organizar entregas e entender a localização dos clientes."
             )
 
             instagram_edit = st.text_input(
                 "Instagram",
-                value=cliente[8] if cliente[8] else ""
+                value=cliente[8] if cliente[8] else "",
+                help="Opcional. Use para registrar o @ do cliente."
             )
 
         with col_form2:
             estado_edit = st.text_input(
                 "Estado",
-                value=cliente[7] if cliente[7] else ""
+                value=cliente[7] if cliente[7] else "",
+                help="Opcional. Ex.: SP, RJ, MG."
             )
 
             origem_lista = [
@@ -230,7 +242,8 @@ def editar_cliente_modal(cliente_id):
             origem_edit = st.selectbox(
                 "Origem do Cliente",
                 origem_lista,
-                index=origem_lista.index(cliente[9]) if cliente[9] in origem_lista else 0
+                index=origem_lista.index(cliente[9]) if cliente[9] in origem_lista else 0,
+                help="Informe como o cliente chegou até você."
             )
 
         status_lista = ["Ativo", "Inativo"]
@@ -243,7 +256,8 @@ def editar_cliente_modal(cliente_id):
 
         observacoes_edit = st.text_area(
             "Observações",
-            value=cliente[10] if cliente[10] else ""
+            value=cliente[10] if cliente[10] else "",
+            help="Opcional. Registre preferências, endereço combinado, histórico ou detalhes importantes."
         )
 
         salvar_edicao = st.form_submit_button("Salvar Alterações")
@@ -490,7 +504,25 @@ sidebar()
 mobile_bottom_nav("clientes")
 inject_desktop_visual()
 mobile_summary_css("clientes")
-header("Clientes", "Cadastro e gestão dos clientes da Gestão 3D")
+
+
+@st.dialog("Ajuda - Clientes")
+def ajuda_clientes():
+    st.markdown(
+        """
+        Use esta tela para organizar os clientes e facilitar a criação de pedidos.
+
+        **Campo obrigatório:** apenas o nome do cliente é essencial.
+
+        Os demais dados são opcionais, mas ajudam na operação:
+        - telefone ou Instagram para contato;
+        - cidade/estado para entrega;
+        - origem para saber de onde veio o cliente;
+        - observações para preferências, recorrência ou combinados.
+        """
+    )
+
+header_with_help("Clientes", "Cadastro e gestão dos clientes da Gestão 3D", ajuda_clientes, key="ajuda_clientes_link")
 
 
 conn = conectar()
@@ -553,8 +585,10 @@ with st.container(key="clientes_desktop_resumo"):
 
 section_title(
     "Cadastro de Clientes",
-    "Adicione clientes para futuramente vincular pedidos, produção e faturamento"
+    "Adicione clientes para vincular pedidos, produção e faturamento"
 )
+
+st.caption("Dica: apenas o nome é obrigatório. WhatsApp, Instagram e cidade ajudam na operação, mas podem ser preenchidos depois.")
 
 
 if "mostrar_form_cliente" not in st.session_state:
@@ -573,27 +607,49 @@ if st.session_state["mostrar_form_cliente"]:
 
         mobile_form_step("1. Dados principais", "Informe nome, tipo e documento do cliente.")
 
-        nome = st.text_input("Nome do Cliente")
+        nome = st.text_input(
+            "Nome do Cliente",
+            help="Campo obrigatório. Use o nome pelo qual você identifica o cliente no atendimento."
+        )
 
         tipo = st.selectbox(
             "Tipo",
-            ["Pessoa Física", "Pessoa Jurídica"]
+            ["Pessoa Física", "Pessoa Jurídica"],
+            help="Escolha Pessoa Física para clientes comuns e Pessoa Jurídica para empresas."
         )
 
-        documento = st.text_input("CPF / CNPJ")
+        documento = st.text_input(
+            "CPF / CNPJ",
+            help="Opcional. Preencha apenas se você quiser manter esse dado no cadastro."
+        )
 
         mobile_form_step("2. Contato e localização", "Preencha WhatsApp, e-mail, cidade, estado e origem.")
 
         col_form1, col_form2 = st.columns(2)
 
         with col_form1:
-            telefone = st.text_input("Telefone / WhatsApp")
-            cidade = st.text_input("Cidade")
-            instagram = st.text_input("Instagram")
+            telefone = st.text_input(
+                "Telefone / WhatsApp",
+                help="Opcional, mas recomendado. Facilita contato para entrega, confirmação ou recompra."
+            )
+            cidade = st.text_input(
+                "Cidade",
+                help="Opcional. Ajuda a organizar entregas e entender a localização dos clientes."
+            )
+            instagram = st.text_input(
+                "Instagram",
+                help="Opcional. Use para registrar o @ do cliente quando o atendimento vier pelo Instagram."
+            )
 
         with col_form2:
-            email = st.text_input("E-mail")
-            estado = st.text_input("Estado")
+            email = st.text_input(
+                "E-mail",
+                help="Opcional. Útil para clientes empresariais, orçamentos ou comprovantes."
+            )
+            estado = st.text_input(
+                "Estado",
+                help="Opcional. Ex.: SP, RJ, MG."
+            )
             origem = st.selectbox(
                 "Origem do Cliente",
                 [
@@ -604,12 +660,16 @@ if st.session_state["mostrar_form_cliente"]:
                     "Feira / Evento",
                     "Cliente recorrente",
                     "Outro"
-                ]
+                ],
+                help="Informe como o cliente chegou até você. Isso ajuda a entender os canais que mais geram venda."
             )
 
         mobile_form_step("3. Observações", "Registre informações importantes para atendimento futuro.")
 
-        observacoes = st.text_area("Observações")
+        observacoes = st.text_area(
+            "Observações",
+            help="Opcional. Registre preferências, endereço combinado, histórico de atendimento ou detalhes importantes."
+        )
 
         salvar = st.form_submit_button("Salvar Cliente")
 
@@ -619,6 +679,9 @@ if st.session_state["mostrar_form_cliente"]:
             st.warning("Informe o nome do cliente.")
 
         else:
+            if not telefone and not email and not instagram:
+                st.info("Dica: o cliente será salvo, mas depois vale cadastrar algum contato como WhatsApp, e-mail ou Instagram.")
+
             conn = conectar()
 
             codigo = gerar_codigo_cliente(conn)
@@ -661,7 +724,7 @@ if st.session_state["mostrar_form_cliente"]:
             conn.commit()
             conn.close()
 
-            st.success("Cliente cadastrado com sucesso!")
+            st.success(f"Cliente {codigo} cadastrado com sucesso! Ele já pode ser usado em novos pedidos.")
             st.session_state["mostrar_form_cliente"] = False
             st.rerun()
 

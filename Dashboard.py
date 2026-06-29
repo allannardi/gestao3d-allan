@@ -4,6 +4,7 @@ import json
 from html import escape
 from collections import defaultdict
 from datetime import date, datetime
+import calendar
 
 from database import conectar, inicializar_banco
 from components.sidebar import sidebar
@@ -1383,6 +1384,218 @@ def render_vendas_mes_chart(vendas_rows):
     st.components.v1.html(html, height=420, scrolling=False)
 
 
+def render_utilizacao_impressoras_chart(utilizacao_rows):
+    if not utilizacao_rows:
+        st.caption("Nenhuma utilização de impressora registrada ainda.")
+        return
+
+    meses = []
+    impressoras = []
+
+    for item in utilizacao_rows:
+        if item["mes"] not in meses:
+            meses.append(item["mes"])
+        if item["impressora"] not in impressoras:
+            impressoras.append(item["impressora"])
+
+    if not meses or not impressoras:
+        st.caption("Nenhuma utilização de impressora registrada ainda.")
+        return
+
+    valores = {
+        impressora: []
+        for impressora in impressoras
+    }
+
+    horas_por_chave = {}
+    capacidade_por_chave = {}
+    pedidos_por_chave = {}
+
+    def chave_json(mes, impressora):
+        return f"{mes}||{impressora}"
+
+    for item in utilizacao_rows:
+        chave = chave_json(item["mes"], item["impressora"])
+        horas_por_chave[chave] = round(float(item["horas_usadas"]), 1)
+        capacidade_por_chave[chave] = round(float(item["capacidade_horas"]), 1)
+        pedidos_por_chave[chave] = int(item["pedidos"])
+
+    for impressora in impressoras:
+        for mes in meses:
+            chave = chave_json(mes, impressora)
+            horas = horas_por_chave.get(chave, 0)
+            capacidade = capacidade_por_chave.get(chave, 0)
+            percentual = (horas / capacidade * 100) if capacidade > 0 else 0
+            valores[impressora].append(round(percentual, 1))
+
+    datasets = []
+    for impressora in impressoras:
+        datasets.append({
+            "label": impressora,
+            "data": valores[impressora],
+            "borderWidth": 1,
+            "borderRadius": 8,
+            "borderSkipped": False,
+            "barThickness": 22,
+            "maxBarThickness": 32,
+        })
+
+    altura_canvas = 380
+
+    html = f"""
+    <style>
+        .g3d-chart-card {{
+            background:#FFFFFF;
+            border:1px solid rgba(185, 205, 220, 0.78);
+            border-radius:20px;
+            padding:18px 18px 8px 18px;
+            box-shadow:0 14px 32px rgba(10, 26, 92, 0.065);
+        }}
+
+        .g3d-chart-card canvas {{
+            width:100%;
+            height:{altura_canvas}px;
+        }}
+
+        @media (max-width: 768px) {{
+            .g3d-chart-card {{
+                border-radius:17px;
+                padding:14px 10px 6px 10px;
+                margin-top: 0;
+            }}
+
+            .g3d-chart-card canvas {{
+                height:340px;
+            }}
+        }}
+    </style>
+
+    <div class="g3d-chart-card">
+        <canvas id="g3d-utilizacao-impressoras-mes-chart"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const labelsUtilizacaoMes = {json.dumps(meses)};
+        const datasetsUtilizacaoMes = {json.dumps(datasets)};
+        const horasUtilizacao = {json.dumps(horas_por_chave)};
+        const capacidadeUtilizacao = {json.dumps(capacidade_por_chave)};
+        const pedidosUtilizacao = {json.dumps(pedidos_por_chave)};
+
+        const coresUtilizacao = [
+            'rgba(12, 101, 170, 0.88)',
+            'rgba(88, 195, 240, 0.88)',
+            'rgba(10, 26, 92, 0.88)',
+            'rgba(16, 6, 144, 0.78)',
+            'rgba(31, 138, 76, 0.78)',
+            'rgba(184, 92, 32, 0.78)'
+        ];
+
+        const bordasUtilizacao = [
+            '#0C65AA',
+            '#58C3F0',
+            '#0A1A5C',
+            '#100690',
+            '#1F8A4C',
+            '#B85C20'
+        ];
+
+        datasetsUtilizacaoMes.forEach((dataset, index) => {{
+            dataset.backgroundColor = coresUtilizacao[index % coresUtilizacao.length];
+            dataset.borderColor = bordasUtilizacao[index % bordasUtilizacao.length];
+        }});
+
+        const canvasUtilizacaoMes = document.getElementById('g3d-utilizacao-impressoras-mes-chart');
+        const chartUtilizacaoMesExistente = Chart.getChart(canvasUtilizacaoMes);
+        if (chartUtilizacaoMesExistente) {{
+            chartUtilizacaoMesExistente.destroy();
+        }}
+
+        new Chart(canvasUtilizacaoMes, {{
+            type: 'bar',
+            data: {{
+                labels: labelsUtilizacaoMes,
+                datasets: datasetsUtilizacaoMes
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {{
+                    mode: 'index',
+                    intersect: false
+                }},
+                layout: {{
+                    padding: {{ top: 10, right: 16, bottom: 0, left: 4 }}
+                }},
+                plugins: {{
+                    legend: {{
+                        position: 'top',
+                        align: 'start',
+                        labels: {{
+                            boxWidth: 14,
+                            boxHeight: 14,
+                            color: '#1E3137',
+                            font: {{
+                                family: 'Inter, system-ui, sans-serif',
+                                size: 12,
+                                weight: '600'
+                            }}
+                        }}
+                    }},
+                    tooltip: {{
+                        backgroundColor: 'rgba(10, 26, 92, 0.96)',
+                        titleFont: {{ family: 'Inter, system-ui, sans-serif', size: 13, weight: '700' }},
+                        bodyFont: {{ family: 'Inter, system-ui, sans-serif', size: 12 }},
+                        padding: 12,
+                        callbacks: {{
+                            label: function(context) {{
+                                const mes = context.label;
+                                const impressora = context.dataset.label;
+                                const chave = mes + '||' + impressora;
+                                const horas = horasUtilizacao[chave] || 0;
+                                const capacidade = capacidadeUtilizacao[chave] || 0;
+                                const pedidos = pedidosUtilizacao[chave] || 0;
+
+                                return [
+                                    impressora + ': ' + context.parsed.y.toFixed(1) + '%',
+                                    'Horas usadas: ' + horas.toFixed(1) + 'h',
+                                    'Capacidade do mês: ' + capacidade.toFixed(0) + 'h',
+                                    'Pedidos: ' + pedidos
+                                ];
+                            }}
+                        }}
+                    }}
+                }},
+                scales: {{
+                    x: {{
+                        grid: {{ display: false }},
+                        ticks: {{
+                            color: '#5C6C74',
+                            font: {{ family: 'Inter, system-ui, sans-serif', size: 11, weight: '600' }}
+                        }}
+                    }},
+                    y: {{
+                        beginAtZero: true,
+                        suggestedMax: 100,
+                        grid: {{ color: '#E6EEF3' }},
+                        ticks: {{
+                            color: '#5C6C74',
+                            font: {{ family: 'Inter, system-ui, sans-serif', size: 11 }},
+                            callback: function(value) {{
+                                return value + '%';
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }});
+    </script>
+    """
+
+    st.components.v1.html(html, height=altura_canvas + 105, scrolling=False)
+
+
+
 def render_ranking_pecas_faturamento(pecas_resumo):
     pecas_ranking = sorted(
         pecas_resumo.items(),
@@ -2162,27 +2375,79 @@ SELECT
     ped.status,
     ped.canal,
     ped.data_pedido,
-    ped.data_entrega_prevista
+    ped.data_entrega_prevista,
+    ped.impressora_id,
+    i.codigo,
+    i.marca,
+    i.modelo,
+    i.energia_hora,
+    i.depreciacao_hora
 FROM pedidos ped
 LEFT JOIN clientes c ON ped.cliente_id = c.id
 LEFT JOIN pecas pc ON ped.peca_id = pc.id
+LEFT JOIN impressoras i ON ped.impressora_id = i.id
 ORDER BY ped.id DESC
 """).fetchall()
 
-peca_ids_dashboard = sorted({pedido[5] for pedido in pedidos if pedido[5]})
-custos_pecas_dashboard = calcular_custos_pecas_lote(
-    conn,
-    peca_ids_dashboard,
-    energia,
-    depreciacao,
-    custo_pos_processamento_hora
-)
+custos_pecas_dashboard = {}
+
+for pedido_custo in pedidos:
+    peca_id_custo = pedido_custo[5]
+    if not peca_id_custo:
+        continue
+
+    energia_pedido_custo = pedido_custo[20] if len(pedido_custo) > 20 and pedido_custo[20] is not None else energia
+    depreciacao_pedido_custo = pedido_custo[21] if len(pedido_custo) > 21 and pedido_custo[21] is not None else depreciacao
+    chave_custo = (
+        peca_id_custo,
+        round(float(energia_pedido_custo), 6),
+        round(float(depreciacao_pedido_custo), 6),
+    )
+
+    if chave_custo not in custos_pecas_dashboard:
+        custos_pecas_dashboard[chave_custo] = calcular_custos_pecas_lote(
+            conn,
+            [peca_id_custo],
+            energia_pedido_custo,
+            depreciacao_pedido_custo,
+            custo_pos_processamento_hora
+        ).get(peca_id_custo)
 
 total_clientes = conn.execute("SELECT COUNT(*) FROM clientes").fetchone()[0]
 total_pecas = conn.execute("SELECT COUNT(*) FROM pecas").fetchone()[0]
 total_filamentos = conn.execute("SELECT COUNT(*) FROM filamentos").fetchone()[0]
+total_impressoras = conn.execute("SELECT COUNT(*) FROM impressoras").fetchone()[0]
+
+impressoras_ativas_dashboard = conn.execute("""
+SELECT
+    id,
+    codigo,
+    marca,
+    modelo
+FROM impressoras
+WHERE status IS NULL OR status = 'Ativa'
+ORDER BY id ASC
+""").fetchall()
+
+impressora_padrao = conn.execute("""
+SELECT
+    codigo,
+    marca,
+    modelo,
+    energia_hora,
+    depreciacao_hora
+FROM impressoras
+WHERE COALESCE(is_padrao, 0) = 1
+ORDER BY id ASC
+LIMIT 1
+""").fetchone()
 
 conn.close()
+
+if impressora_padrao:
+    impressora_padrao_nome = f"{impressora_padrao[0]} - {impressora_padrao[1]} {impressora_padrao[2]}"
+else:
+    impressora_padrao_nome = "Impressora padrão"
 
 
 pedidos_abertos = 0
@@ -2213,6 +2478,13 @@ clientes_resumo = defaultdict(lambda: {
     "lucro": 0,
 })
 
+impressoras_resumo = defaultdict(lambda: {
+    "pedidos": 0,
+    "faturamento": 0,
+    "lucro": 0,
+    "horas": 0,
+})
+
 vendas_mes_resumo = defaultdict(lambda: {
     "mes": "",
     "pedidos": 0,
@@ -2223,6 +2495,40 @@ vendas_mes_resumo = defaultdict(lambda: {
 
 pedidos_recentes = []
 pedidos_abertos_lista = []
+
+meses_utilizacao = []
+ano_mes_atual = hoje.year * 12 + hoje.month
+
+for offset in range(11, -1, -1):
+    total_meses = ano_mes_atual - offset
+    ano_mes = (total_meses - 1) // 12
+    mes_num = (total_meses - 1) % 12 + 1
+    data_mes = date(ano_mes, mes_num, 1)
+    mes_key = data_mes.strftime("%Y-%m")
+    mes_label = rotulo_mes_grafico(data_mes)
+    capacidade_mes = calendar.monthrange(ano_mes, mes_num)[1] * 24
+
+    meses_utilizacao.append({
+        "key": mes_key,
+        "label": mes_label,
+        "capacidade": capacidade_mes,
+    })
+
+capacidade_horas_mes = meses_utilizacao[-1]["capacidade"] if meses_utilizacao else 0
+
+utilizacao_impressoras_mes = defaultdict(lambda: {
+    "horas_usadas": 0,
+    "capacidade_horas": 0,
+    "pedidos": 0,
+})
+
+for mes_info in meses_utilizacao:
+    for impressora in impressoras_ativas_dashboard:
+        impressora_label = f"{impressora[1]} - {impressora[2]} {impressora[3]}".strip()
+        chave_utilizacao = (mes_info["key"], mes_info["label"], impressora_label)
+        utilizacao_impressoras_mes[chave_utilizacao]["horas_usadas"] += 0
+        utilizacao_impressoras_mes[chave_utilizacao]["capacidade_horas"] = mes_info["capacidade"]
+        utilizacao_impressoras_mes[chave_utilizacao]["pedidos"] += 0
 
 for pedido in pedidos:
     codigo = pedido[1]
@@ -2238,6 +2544,18 @@ for pedido in pedidos:
     status = pedido[12] if pedido[12] else "Orçamento"
     data_pedido = pedido[14] if pedido[14] else ""
     data_pedido_dt = data_para_date(data_pedido)
+    impressora_id = pedido[16] if len(pedido) > 16 else None
+    impressora_codigo = pedido[17] if len(pedido) > 17 and pedido[17] else "-"
+    impressora_marca = pedido[18] if len(pedido) > 18 and pedido[18] else ""
+    impressora_modelo = pedido[19] if len(pedido) > 19 and pedido[19] else ""
+    energia_pedido = pedido[20] if len(pedido) > 20 and pedido[20] is not None else energia
+    depreciacao_pedido = pedido[21] if len(pedido) > 21 and pedido[21] is not None else depreciacao
+    impressora_key = f"{impressora_codigo} - {impressora_marca} {impressora_modelo}".strip() if impressora_id else impressora_padrao_nome
+    chave_custo_pedido = (
+        peca_id,
+        round(float(energia_pedido), 6),
+        round(float(depreciacao_pedido), 6),
+    )
 
     calc = calcular_pedido(
         peca_id,
@@ -2245,9 +2563,9 @@ for pedido in pedidos:
         valor_unitario,
         desconto,
         frete,
-        energia,
-        depreciacao,
-        custos_pecas_dashboard.get(peca_id),
+        energia_pedido,
+        depreciacao_pedido,
+        custos_pecas_dashboard.get(chave_custo_pedido),
     )
 
     if status not in ["Entregue", "Cancelado"]:
@@ -2262,6 +2580,13 @@ for pedido in pedidos:
         if data_pedido_dt and data_pedido_dt.month == hoje.month and data_pedido_dt.year == hoje.year:
             faturamento_mes += calc["total"]
             lucro_mes += calc["lucro"]
+            mes_key_utilizacao = data_pedido_dt.strftime("%Y-%m")
+            mes_label_utilizacao = rotulo_mes_grafico(data_pedido_dt)
+            capacidade_mes_utilizacao = calendar.monthrange(data_pedido_dt.year, data_pedido_dt.month)[1] * 24
+            chave_utilizacao = (mes_key_utilizacao, mes_label_utilizacao, impressora_key)
+            utilizacao_impressoras_mes[chave_utilizacao]["horas_usadas"] += calc["tempo_total"]
+            utilizacao_impressoras_mes[chave_utilizacao]["capacidade_horas"] = capacidade_mes_utilizacao
+            utilizacao_impressoras_mes[chave_utilizacao]["pedidos"] += 1
             if status == "Entregue":
                 pedidos_fechados_mes += 1
 
@@ -2274,6 +2599,11 @@ for pedido in pedidos:
         clientes_resumo[clientes_key]["pedidos"] += 1
         clientes_resumo[clientes_key]["faturamento"] += calc["total"]
         clientes_resumo[clientes_key]["lucro"] += calc["lucro"]
+
+        impressoras_resumo[impressora_key]["pedidos"] += 1
+        impressoras_resumo[impressora_key]["faturamento"] += calc["total"]
+        impressoras_resumo[impressora_key]["lucro"] += calc["lucro"]
+        impressoras_resumo[impressora_key]["horas"] += calc["tempo_total"]
 
         if data_pedido_dt:
             mes_key = data_pedido_dt.strftime("%Y-%m")
@@ -2323,6 +2653,23 @@ for mes_key, dados in sorted(vendas_mes_resumo.items())[-12:]:
         "faturamento": faturamento_mes_item,
         "lucro": lucro_mes_item,
         "margem": margem_mes_item,
+    })
+
+utilizacao_impressoras_grafico = []
+for chave, dados in sorted(utilizacao_impressoras_mes.items(), key=lambda item: item[0][0]):
+    mes_key, mes_label, impressora_nome = chave
+    capacidade = dados["capacidade_horas"] if dados["capacidade_horas"] > 0 else capacidade_horas_mes
+    horas_usadas = float(dados["horas_usadas"])
+    utilizacao_percentual = (horas_usadas / capacidade) * 100 if capacidade > 0 else 0
+
+    utilizacao_impressoras_grafico.append({
+        "mes_key": mes_key,
+        "mes": mes_label,
+        "impressora": impressora_nome,
+        "horas_usadas": horas_usadas,
+        "capacidade_horas": capacidade,
+        "utilizacao_percentual": utilizacao_percentual,
+        "pedidos": dados["pedidos"],
     })
 
 
@@ -2395,6 +2742,18 @@ with st.container(key="dashboard_desktop"):
 
     render_vendas_mes_chart(vendas_mes_grafico)
 
+    section_title(
+        "Faturamento por impressora",
+        "Ranking por faturamento e lucro gerado por máquina"
+    )
+    render_ranking_faturamento_visual(impressoras_resumo, label_quantidade="pedidos", limite=8)
+
+    section_title(
+        "Utilização das impressoras por mês",
+        "Percentual mensal de uso por máquina nos últimos 12 meses"
+    )
+    render_utilizacao_impressoras_chart(utilizacao_impressoras_grafico)
+
     col_r1, col_r2 = st.columns(2)
 
     with col_r1:
@@ -2432,11 +2791,13 @@ with st.container(key="dashboard_desktop"):
             align-items:center;
         ">
             <span style="font-weight:700;">Parâmetros atuais:</span>
-            <span>Energia {moeda(energia)}/h</span>
+            <span>Impressora padrão: {escape(impressora_padrao_nome)}</span>
             <span>·</span>
-            <span>Depreciação {moeda(depreciacao)}/h</span>
+            <span>Energia padrão {moeda(energia)}/h</span>
             <span>·</span>
-            <span>Margem padrão {margem:.0f}%</span>
+            <span>Depreciação padrão {moeda(depreciacao)}/h</span>
+            <span>·</span>
+            <span>Markup {margem:.0f}%</span>
             <span>·</span>
             <span>Meta lucro/hora {moeda(meta_lucro)}</span>
         </div>

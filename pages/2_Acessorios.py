@@ -5,6 +5,7 @@ from components.mobile_nav import mobile_bottom_nav
 from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
+from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
@@ -108,26 +109,33 @@ def editar_acessorio_modal(acessorio_id):
 
     with st.form("editar_acessorio_form_modal"):
 
-        nome_edit = st.text_input("Nome", value=acessorio[1])
+        nome_edit = st.text_input(
+            "Nome",
+            value=acessorio[1],
+            help="Use um nome fácil de reconhecer no cadastro de peças."
+        )
 
         categorias_lista = ["Chaveiro", "Imã", "Parafuso", "Embalagem", "Etiqueta", "Outro"]
 
         categoria_edit = st.selectbox(
             "Categoria",
             categorias_lista,
-            index=categorias_lista.index(acessorio[2]) if acessorio[2] in categorias_lista else 5
+            index=categorias_lista.index(acessorio[2]) if acessorio[2] in categorias_lista else 5,
+            help="Escolha o tipo de acessório para facilitar busca e organização."
         )
 
         custo_edit = st.number_input(
             "Custo Unitário (R$)",
             min_value=0.0,
             value=float(acessorio[3]),
-            step=0.01
+            step=0.01,
+            help="Informe o custo de 1 unidade. Esse valor entra no cálculo de custo das peças."
         )
 
         observacoes_edit = st.text_area(
             "Observações",
-            value=acessorio[4] if acessorio[4] else ""
+            value=acessorio[4] if acessorio[4] else "",
+            help="Opcional. Registre fornecedor, tamanho, cor, lote ou observações de uso."
         )
 
         salvar_edicao = st.form_submit_button("Salvar Alterações")
@@ -136,6 +144,9 @@ def editar_acessorio_modal(acessorio_id):
 
         if not nome_edit:
             st.warning("Informe o nome do acessório.")
+
+        elif custo_edit <= 0:
+            st.warning("Informe o custo unitário do acessório.")
 
         else:
             conn = conectar()
@@ -174,7 +185,26 @@ sidebar()
 mobile_bottom_nav("mais")
 inject_desktop_visual()
 mobile_summary_css("acessorios")
-header("Acessórios", "Cadastro e controle dos itens adicionais")
+
+
+@st.dialog("Ajuda - Acessórios")
+def ajuda_acessorios():
+    st.markdown(
+        """
+        Use esta tela para cadastrar itens extras usados nas peças ou pedidos.
+
+        Exemplos:
+        - argolas de chaveiro;
+        - ímãs;
+        - embalagens especiais;
+        - partes metálicas;
+        - etiquetas ou acessórios decorativos.
+
+        Depois de cadastrados, esses itens podem entrar no custo da peça para deixar o cálculo de lucro mais realista.
+        """
+    )
+
+header_with_help("Acessórios", "Cadastro e controle dos itens adicionais", ajuda_acessorios, key="ajuda_acessorios_link")
 
 
 conn = conectar()
@@ -234,6 +264,8 @@ section_title(
     "Adicione itens usados na composição das peças"
 )
 
+st.caption("Dica: cadastre o custo de uma unidade do acessório. O sistema multiplica pela quantidade usada no lote da peça.")
+
 
 if "mostrar_form_acessorio" not in st.session_state:
     st.session_state["mostrar_form_acessorio"] = False
@@ -249,21 +281,29 @@ if st.session_state["mostrar_form_acessorio"]:
 
     with st.form("novo_acessorio"):
 
-        nome = st.text_input("Nome do Acessório")
+        nome = st.text_input(
+            "Nome do Acessório",
+            help="Use um nome fácil de reconhecer. Ex.: Argola de chaveiro, imã 10 mm, embalagem kraft."
+        )
 
         categoria = st.selectbox(
             "Categoria",
-            ["Chaveiro", "Imã", "Parafuso", "Embalagem", "Etiqueta", "Outro"]
+            ["Chaveiro", "Imã", "Parafuso", "Embalagem", "Etiqueta", "Outro"],
+            help="Escolha o tipo de acessório. Isso ajuda a organizar e encontrar o item depois."
         )
 
         custo_unitario = st.number_input(
             "Custo Unitário (R$)",
             min_value=0.0,
             value=0.0,
-            step=0.01
+            step=0.01,
+            help="Informe quanto custa 1 unidade deste acessório. Ex.: se 100 argolas custam R$ 20,00, o custo unitário é R$ 0,20."
         )
 
-        observacoes = st.text_area("Observações")
+        observacoes = st.text_area(
+            "Observações",
+            help="Opcional. Use para registrar fornecedor, tamanho, cor, lote ou observações de uso."
+        )
 
         salvar = st.form_submit_button("Salvar Acessório")
 
@@ -271,6 +311,9 @@ if st.session_state["mostrar_form_acessorio"]:
 
         if not nome:
             st.warning("Informe o nome do acessório.")
+
+        elif custo_unitario <= 0:
+            st.warning("Informe o custo unitário do acessório. Esse valor é usado no cálculo de lucro da peça.")
 
         else:
             conn = conectar()
@@ -299,7 +342,7 @@ if st.session_state["mostrar_form_acessorio"]:
             conn.commit()
             conn.close()
 
-            st.success("Acessório cadastrado com sucesso!")
+            st.success(f"Acessório {codigo} cadastrado com sucesso! Ele já pode ser usado no cadastro de peças.")
             st.session_state["mostrar_form_acessorio"] = False
             st.rerun()
 

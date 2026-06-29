@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v11_05_melhorias_pedidos_dashboard_filamentos"
+SCHEMA_VERSION = "v13_11_aplicar_impressora_padrao_lote"
 
 
 def _get_secret(section, key, default=None):
@@ -157,7 +157,25 @@ def criar_banco():
         depreciacao_hora REAL,
         margem_padrao REAL,
         meta_lucro_hora REAL,
-        custo_pos_processamento_hora REAL DEFAULT 0
+        custo_pos_processamento_hora REAL DEFAULT 0,
+        valor_kwh REAL DEFAULT 0.65
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS impressoras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        marca TEXT,
+        modelo TEXT,
+        status TEXT DEFAULT 'Ativa',
+        consumo_w REAL DEFAULT 200,
+        valor_kwh REAL DEFAULT 0.65,
+        energia_hora REAL DEFAULT 0,
+        depreciacao_hora REAL DEFAULT 0.75,
+        observacoes TEXT,
+        is_padrao INTEGER DEFAULT 0,
+        data_cadastro TEXT
     )
     """)
 
@@ -279,7 +297,8 @@ def criar_banco():
         canal TEXT,
         data_pedido TEXT,
         data_entrega_prevista TEXT,
-        observacoes TEXT
+        observacoes TEXT,
+        impressora_id INTEGER
     )
     """)
 
@@ -326,12 +345,141 @@ def migrar_status_confirmado_para_encomendado():
     conn.close()
 
 
+
+def criar_tabela_impressoras():
+    conn = conectar()
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS impressoras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        marca TEXT,
+        modelo TEXT,
+        status TEXT DEFAULT 'Ativa',
+        consumo_w REAL DEFAULT 200,
+        valor_kwh REAL DEFAULT 0.65,
+        energia_hora REAL DEFAULT 0,
+        depreciacao_hora REAL DEFAULT 0.75,
+        observacoes TEXT,
+        is_padrao INTEGER DEFAULT 0,
+        data_cadastro TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def gerar_codigo_impressora(conn):
+    ultimo = conn.execute("""
+        SELECT MAX(id)
+        FROM impressoras
+    """).fetchone()[0]
+
+    proximo = 1 if ultimo is None else ultimo + 1
+    return f"IMP-{proximo:03d}"
+
+
+def calcular_energia_hora_impressora(consumo_w, valor_kwh):
+    consumo_w = consumo_w if consumo_w else 0
+    valor_kwh = valor_kwh if valor_kwh else 0
+    return (consumo_w / 1000) * valor_kwh
+
+
+def inserir_impressora_padrao():
+    """
+    Garante que projetos novos ou bancos antigos tenham pelo menos uma impressora.
+
+    A primeira impressora cadastrada é marcada como padrão.
+    Para bancos existentes, a impressora inicial preserva os valores atuais de energia/depreciação.
+    """
+    conn = conectar()
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS impressoras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        marca TEXT,
+        modelo TEXT,
+        status TEXT DEFAULT 'Ativa',
+        consumo_w REAL DEFAULT 200,
+        valor_kwh REAL DEFAULT 0.65,
+        energia_hora REAL DEFAULT 0,
+        depreciacao_hora REAL DEFAULT 0.75,
+        observacoes TEXT,
+        is_padrao INTEGER DEFAULT 0,
+        data_cadastro TEXT
+    )
+    """)
+
+    total = conn.execute("SELECT COUNT(*) FROM impressoras").fetchone()[0]
+
+    if total == 0:
+        config = conn.execute("""
+        SELECT
+            COALESCE(energia_hora, 0.15),
+            COALESCE(depreciacao_hora, 0.75)
+        FROM configuracoes
+        LIMIT 1
+        """).fetchone()
+
+        energia_atual = config[0] if config else 0.15
+        depreciacao_atual = config[1] if config else 0.75
+        valor_kwh = 0.65
+        consumo_w = (energia_atual / valor_kwh) * 1000 if valor_kwh > 0 and energia_atual > 0 else 200
+        energia_hora = calcular_energia_hora_impressora(consumo_w, valor_kwh)
+
+        conn.execute("""
+        INSERT INTO impressoras
+        (
+            codigo,
+            marca,
+            modelo,
+            status,
+            consumo_w,
+            valor_kwh,
+            energia_hora,
+            depreciacao_hora,
+            observacoes,
+            is_padrao,
+            data_cadastro
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE('now'))
+        """,
+        (
+            "IMP-001",
+            "Bambu Lab",
+            "A1 Mini",
+            "Ativa",
+            consumo_w,
+            valor_kwh,
+            energia_hora,
+            depreciacao_atual,
+            "Impressora padrão criada automaticamente a partir das configurações existentes.",
+            1
+        ))
+
+    conn.commit()
+    conn.close()
+
 def garantir_migracoes():
+    criar_tabela_impressoras()
     garantir_coluna("pecas", "quantidade_lote", "REAL DEFAULT 1")
     garantir_coluna("filamentos", "status", "TEXT DEFAULT 'Ativo'")
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
     garantir_coluna("configuracoes", "custo_pos_processamento_hora", "REAL DEFAULT 0")
+    garantir_coluna("configuracoes", "valor_kwh", "REAL DEFAULT 0.65")
     garantir_coluna("pedido_filamentos", "peso_g", "REAL DEFAULT 0")
+    garantir_coluna("pedidos", "impressora_id", "INTEGER")
+    garantir_coluna("impressoras", "codigo", "TEXT")
+    garantir_coluna("impressoras", "marca", "TEXT")
+    garantir_coluna("impressoras", "modelo", "TEXT")
+    garantir_coluna("impressoras", "status", "TEXT DEFAULT 'Ativa'")
+    garantir_coluna("impressoras", "consumo_w", "REAL DEFAULT 200")
+    garantir_coluna("impressoras", "valor_kwh", "REAL DEFAULT 0.65")
+    garantir_coluna("impressoras", "energia_hora", "REAL DEFAULT 0")
+    garantir_coluna("impressoras", "depreciacao_hora", "REAL DEFAULT 0.75")
+    garantir_coluna("impressoras", "observacoes", "TEXT")
+    garantir_coluna("impressoras", "is_padrao", "INTEGER DEFAULT 0")
+    garantir_coluna("impressoras", "data_cadastro", "TEXT")
     migrar_status_confirmado_para_encomendado()
 
     conn = conectar()
@@ -384,9 +532,10 @@ def inserir_configuracao_padrao():
             depreciacao_hora,
             margem_padrao,
             meta_lucro_hora,
-            custo_pos_processamento_hora
+            custo_pos_processamento_hora,
+            valor_kwh
         )
-        VALUES (0.15, 0.75, 150, 5, 0)
+        VALUES (0.15, 0.75, 150, 5, 0, 0.65)
         """)
 
     conn.commit()
@@ -422,6 +571,8 @@ def inicializar_banco(force=False):
         criar_banco()
         garantir_migracoes()
         inserir_configuracao_padrao()
+        inserir_impressora_padrao()
+        inserir_impressora_padrao()
         inserir_categorias_pecas_padrao()
 
         st.session_state["_g3d_banco_inicializado"] = True

@@ -6,6 +6,7 @@ from components.mobile_nav import mobile_bottom_nav
 from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css, render_mobile_summary
 from components.header import header
+from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.card import item_card
 from components.button import primary_button, secondary_button, danger_button
@@ -332,7 +333,26 @@ sidebar()
 mobile_bottom_nav("mais")
 inject_desktop_visual()
 mobile_summary_css("filamentos")
-header("Filamentos", "Cadastro e controle dos rolos utilizados")
+
+
+@st.dialog("Ajuda - Filamentos")
+def ajuda_filamentos():
+    st.markdown(
+        """
+        Use esta tela para cadastrar cada rolo de material comprado.
+
+        **Como preencher:**
+        - **Nome:** uma identificação fácil, como `PLA Branco - Rolo 01`.
+        - **Material:** tipo do filamento, como PLA ou PETG.
+        - **Cor:** cor visível do rolo.
+        - **Peso original:** peso cheio do rolo em gramas.
+        - **Valor da compra:** quanto você pagou pelo rolo.
+
+        O sistema calcula automaticamente o custo por grama e usa esse valor para estimar custo, lucro e saldo de material nos pedidos.
+        """
+    )
+
+header_with_help("Filamentos", "Cadastro e controle dos rolos utilizados", ajuda_filamentos, key="ajuda_filamentos_link")
 
 
 conn = conectar()
@@ -391,8 +411,10 @@ with st.container(key="filamentos_desktop_resumo"):
 
 section_title(
     "Cadastro de Filamentos",
-    "Adicione novos rolos ou consulte filamentos já cadastrados"
+    "Cadastre cada rolo físico para controlar custo e saldo por grama"
 )
+
+st.caption("Dica: cadastre um registro para cada rolo físico. Isso ajuda no controle de saldo e custo por grama.")
 
 
 if "mostrar_form_filamento" not in st.session_state:
@@ -409,31 +431,52 @@ if st.session_state["mostrar_form_filamento"]:
 
     with st.form("novo_filamento"):
 
-        nome = st.text_input("Nome do Filamento")
+        nome = st.text_input(
+            "Nome do Filamento",
+            help="Use um nome fácil de identificar fisicamente. Ex.: PLA Branco - Rolo 01."
+        )
 
-        material = st.selectbox("Material", ["PLA", "PETG"])
+        material = st.selectbox(
+            "Material",
+            ["PLA", "PETG"],
+            help="Tipo do material do rolo. Essa informação ajuda a separar custos e uso por material."
+        )
 
-        marca = st.text_input("Marca")
+        marca = st.text_input(
+            "Marca",
+            help="Opcional. Informe a marca do rolo para facilitar reposição e comparação de qualidade."
+        )
 
-        cor = st.text_input("Cor")
+        cor = st.text_input(
+            "Cor",
+            help="Informe a cor visível do rolo. Ex.: branco, preto, silk dourado, vermelho."
+        )
 
         peso_original = st.number_input(
             "Peso Original (g)",
             min_value=1.0,
-            value=1000.0
+            value=1000.0,
+            help="Peso cheio do rolo em gramas. Ex.: rolo de 1 kg = 1000 g."
         )
 
         valor_compra = st.number_input(
             "Valor da Compra (R$)",
             min_value=0.0,
-            value=0.0
+            value=0.0,
+            help="Valor total pago no rolo. O sistema divide pelo peso para calcular o custo por grama."
         )
 
-        fornecedor = st.text_input("Fornecedor")
+        fornecedor = st.text_input(
+            "Fornecedor",
+            help="Opcional. Loja ou fornecedor onde o rolo foi comprado."
+        )
 
         data_compra = st.date_input("Data da Compra", format="DD/MM/YYYY")
 
-        observacoes = st.text_area("Observações")
+        observacoes = st.text_area(
+            "Observações",
+            help="Opcional. Use para registrar lote, qualidade, problemas de impressão ou preferências de uso."
+        )
 
         salvar = st.form_submit_button("Salvar Filamento")
 
@@ -441,6 +484,15 @@ if st.session_state["mostrar_form_filamento"]:
 
         if not nome:
             st.warning("Informe o nome do filamento.")
+
+        elif not cor:
+            st.warning("Informe a cor do filamento.")
+
+        elif peso_original <= 0:
+            st.warning("Informe o peso original do rolo.")
+
+        elif valor_compra <= 0:
+            st.warning("Informe o valor da compra do rolo.")
 
         else:
             conn = conectar()
@@ -486,7 +538,7 @@ if st.session_state["mostrar_form_filamento"]:
             conn.commit()
             conn.close()
 
-            st.success("Filamento cadastrado com sucesso!")
+            st.success(f"Filamento cadastrado com sucesso! Custo estimado: {moeda(custo_grama)}/g.")
             st.session_state["mostrar_form_filamento"] = False
             st.rerun()
 

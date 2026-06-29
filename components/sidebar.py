@@ -1,5 +1,7 @@
 import streamlit as st
 
+APP_VERSION = "0.13"
+
 
 def sidebar_section(titulo):
     st.markdown(
@@ -202,10 +204,10 @@ def sidebar():
         sidebar_link("pages/Configuracoes.py", "Configurações")
 
         st.markdown(
-            """
+            f"""
             <div class="g3d-sidebar-footer">
                 <span>Versão</span>
-                <strong>0.8</strong>
+                <strong>{APP_VERSION}</strong>
             </div>
             """,
             unsafe_allow_html=True,

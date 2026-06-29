@@ -2376,6 +2376,8 @@ SELECT
     ped.canal,
     ped.data_pedido,
     ped.data_entrega_prevista,
+    ped.data_final_producao,
+    ped.data_entrega_real,
     ped.impressora_id,
     i.codigo,
     i.marca,
@@ -2396,8 +2398,8 @@ for pedido_custo in pedidos:
     if not peca_id_custo:
         continue
 
-    energia_pedido_custo = pedido_custo[20] if len(pedido_custo) > 20 and pedido_custo[20] is not None else energia
-    depreciacao_pedido_custo = pedido_custo[21] if len(pedido_custo) > 21 and pedido_custo[21] is not None else depreciacao
+    energia_pedido_custo = pedido_custo[22] if len(pedido_custo) > 22 and pedido_custo[22] is not None else energia
+    depreciacao_pedido_custo = pedido_custo[23] if len(pedido_custo) > 23 and pedido_custo[23] is not None else depreciacao
     chave_custo = (
         peca_id_custo,
         round(float(energia_pedido_custo), 6),
@@ -2544,12 +2546,14 @@ for pedido in pedidos:
     status = pedido[12] if pedido[12] else "Orçamento"
     data_pedido = pedido[14] if pedido[14] else ""
     data_pedido_dt = data_para_date(data_pedido)
-    impressora_id = pedido[16] if len(pedido) > 16 else None
-    impressora_codigo = pedido[17] if len(pedido) > 17 and pedido[17] else "-"
-    impressora_marca = pedido[18] if len(pedido) > 18 and pedido[18] else ""
-    impressora_modelo = pedido[19] if len(pedido) > 19 and pedido[19] else ""
-    energia_pedido = pedido[20] if len(pedido) > 20 and pedido[20] is not None else energia
-    depreciacao_pedido = pedido[21] if len(pedido) > 21 and pedido[21] is not None else depreciacao
+    data_final_producao = pedido[16] if len(pedido) > 16 and pedido[16] else ""
+    data_producao_dt = data_para_date(data_final_producao) or data_pedido_dt
+    impressora_id = pedido[18] if len(pedido) > 18 else None
+    impressora_codigo = pedido[19] if len(pedido) > 19 and pedido[19] else "-"
+    impressora_marca = pedido[20] if len(pedido) > 20 and pedido[20] else ""
+    impressora_modelo = pedido[21] if len(pedido) > 21 and pedido[21] else ""
+    energia_pedido = pedido[22] if len(pedido) > 22 and pedido[22] is not None else energia
+    depreciacao_pedido = pedido[23] if len(pedido) > 23 and pedido[23] is not None else depreciacao
     impressora_key = f"{impressora_codigo} - {impressora_marca} {impressora_modelo}".strip() if impressora_id else impressora_padrao_nome
     chave_custo_pedido = (
         peca_id,
@@ -2580,15 +2584,19 @@ for pedido in pedidos:
         if data_pedido_dt and data_pedido_dt.month == hoje.month and data_pedido_dt.year == hoje.year:
             faturamento_mes += calc["total"]
             lucro_mes += calc["lucro"]
-            mes_key_utilizacao = data_pedido_dt.strftime("%Y-%m")
-            mes_label_utilizacao = rotulo_mes_grafico(data_pedido_dt)
-            capacidade_mes_utilizacao = calendar.monthrange(data_pedido_dt.year, data_pedido_dt.month)[1] * 24
-            chave_utilizacao = (mes_key_utilizacao, mes_label_utilizacao, impressora_key)
-            utilizacao_impressoras_mes[chave_utilizacao]["horas_usadas"] += calc["tempo_total"]
-            utilizacao_impressoras_mes[chave_utilizacao]["capacidade_horas"] = capacidade_mes_utilizacao
-            utilizacao_impressoras_mes[chave_utilizacao]["pedidos"] += 1
             if status == "Entregue":
                 pedidos_fechados_mes += 1
+
+        if data_producao_dt:
+            mes_key_utilizacao = data_producao_dt.strftime("%Y-%m")
+            mes_label_utilizacao = rotulo_mes_grafico(data_producao_dt)
+            capacidade_mes_utilizacao = calendar.monthrange(data_producao_dt.year, data_producao_dt.month)[1] * 24
+            chave_utilizacao = (mes_key_utilizacao, mes_label_utilizacao, impressora_key)
+
+            if chave_utilizacao in utilizacao_impressoras_mes:
+                utilizacao_impressoras_mes[chave_utilizacao]["horas_usadas"] += calc["tempo_total"]
+                utilizacao_impressoras_mes[chave_utilizacao]["capacidade_horas"] = capacidade_mes_utilizacao
+                utilizacao_impressoras_mes[chave_utilizacao]["pedidos"] += 1
 
         pecas_key = f"{peca_codigo} - {peca_nome}"
         pecas_resumo[pecas_key]["quantidade"] += quantidade
@@ -2750,7 +2758,7 @@ with st.container(key="dashboard_desktop"):
 
     section_title(
         "Utilização das impressoras por mês",
-        "Percentual mensal de uso por máquina nos últimos 12 meses"
+        "Usa Data Final Produção; pedidos antigos sem essa data usam Data do Pedido"
     )
     render_utilizacao_impressoras_chart(utilizacao_impressoras_grafico)
 

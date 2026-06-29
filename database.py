@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v13_11_aplicar_impressora_padrao_lote"
+SCHEMA_VERSION = "v13_13_ajuste_datas_pedidos_antigos"
 
 
 def _get_secret(section, key, default=None):
@@ -297,6 +297,8 @@ def criar_banco():
         canal TEXT,
         data_pedido TEXT,
         data_entrega_prevista TEXT,
+        data_final_producao TEXT,
+        data_entrega_real TEXT,
         observacoes TEXT,
         impressora_id INTEGER
     )
@@ -469,6 +471,8 @@ def garantir_migracoes():
     garantir_coluna("configuracoes", "valor_kwh", "REAL DEFAULT 0.65")
     garantir_coluna("pedido_filamentos", "peso_g", "REAL DEFAULT 0")
     garantir_coluna("pedidos", "impressora_id", "INTEGER")
+    garantir_coluna("pedidos", "data_final_producao", "TEXT")
+    garantir_coluna("pedidos", "data_entrega_real", "TEXT")
     garantir_coluna("impressoras", "codigo", "TEXT")
     garantir_coluna("impressoras", "marca", "TEXT")
     garantir_coluna("impressoras", "modelo", "TEXT")

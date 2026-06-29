@@ -283,6 +283,87 @@ def aplicar_impressora_padrao_pedidos_antigos(impressora_id):
     return quantidade
 
 
+def contar_pedidos_para_ajuste_datas_previstas():
+    conn = conectar()
+
+    try:
+        total = conn.execute("""
+        SELECT COUNT(*)
+        FROM pedidos
+        WHERE data_entrega_prevista IS NOT NULL
+          AND TRIM(data_entrega_prevista) <> ''
+          AND (
+                data_final_producao IS NULL
+                OR TRIM(data_final_producao) = ''
+                OR data_entrega_real IS NULL
+                OR TRIM(data_entrega_real) = ''
+          )
+        """).fetchone()[0]
+
+        sem_data_final = conn.execute("""
+        SELECT COUNT(*)
+        FROM pedidos
+        WHERE data_entrega_prevista IS NOT NULL
+          AND TRIM(data_entrega_prevista) <> ''
+          AND (data_final_producao IS NULL OR TRIM(data_final_producao) = '')
+        """).fetchone()[0]
+
+        sem_data_entrega = conn.execute("""
+        SELECT COUNT(*)
+        FROM pedidos
+        WHERE data_entrega_prevista IS NOT NULL
+          AND TRIM(data_entrega_prevista) <> ''
+          AND (data_entrega_real IS NULL OR TRIM(data_entrega_real) = '')
+        """).fetchone()[0]
+
+    except Exception:
+        total = 0
+        sem_data_final = 0
+        sem_data_entrega = 0
+
+    conn.close()
+
+    return {
+        "total": total,
+        "sem_data_final": sem_data_final,
+        "sem_data_entrega": sem_data_entrega,
+    }
+
+
+def aplicar_entrega_prevista_nas_datas_antigas():
+    conn = conectar()
+
+    resultado = conn.execute("""
+    UPDATE pedidos
+    SET
+        data_final_producao = CASE
+            WHEN data_final_producao IS NULL OR TRIM(data_final_producao) = ''
+            THEN data_entrega_prevista
+            ELSE data_final_producao
+        END,
+        data_entrega_real = CASE
+            WHEN data_entrega_real IS NULL OR TRIM(data_entrega_real) = ''
+            THEN data_entrega_prevista
+            ELSE data_entrega_real
+        END
+    WHERE data_entrega_prevista IS NOT NULL
+      AND TRIM(data_entrega_prevista) <> ''
+      AND (
+            data_final_producao IS NULL
+            OR TRIM(data_final_producao) = ''
+            OR data_entrega_real IS NULL
+            OR TRIM(data_entrega_real) = ''
+      )
+    """)
+
+    quantidade = resultado.rowcount if resultado.rowcount is not None else 0
+
+    conn.commit()
+    conn.close()
+
+    return quantidade
+
+
 def sincronizar_configuracao_com_impressora_padrao(conn, impressora_id):
     impressora = conn.execute("""
     SELECT energia_hora, depreciacao_hora
@@ -367,6 +448,7 @@ valor_kwh_geral = config[5] if len(config) > 5 else 0.65
 impressoras = carregar_impressoras()
 impressora_padrao = carregar_impressora_padrao()
 pedidos_sem_impressora = contar_pedidos_sem_impressora()
+resumo_ajuste_datas = contar_pedidos_para_ajuste_datas_previstas()
 total_impressoras = len(impressoras)
 impressoras_ativas = len([i for i in impressoras if (i[4] or "Ativa") == "Ativa"])
 
@@ -713,6 +795,69 @@ with st.container(border=True):
             st.success("Todos os pedidos já possuem impressora vinculada.")
     else:
         st.warning("Cadastre ou defina uma impressora padrão antes de aplicar em lote.")
+
+
+
+with st.container(border=True):
+
+    small_section("Ajuste pontual de datas dos pedidos antigos")
+
+    col_datas1, col_datas2, col_datas3 = st.columns(3)
+
+    with col_datas1:
+        kpi_card(
+            "Pedidos elegíveis",
+            str(resumo_ajuste_datas["total"]),
+            "com entrega prevista",
+            "orange" if resumo_ajuste_datas["total"] > 0 else "green"
+        )
+
+    with col_datas2:
+        kpi_card(
+            "Sem Data Final Produção",
+            str(resumo_ajuste_datas["sem_data_final"]),
+            "será preenchida",
+            "orange" if resumo_ajuste_datas["sem_data_final"] > 0 else "green"
+        )
+
+    with col_datas3:
+        kpi_card(
+            "Sem Data da Entrega",
+            str(resumo_ajuste_datas["sem_data_entrega"]),
+            "será preenchida",
+            "orange" if resumo_ajuste_datas["sem_data_entrega"] > 0 else "green"
+        )
+
+    st.caption(
+        "Esta ação pontual preenche Data Final Produção e Data da Entrega usando a Entrega Prevista dos pedidos antigos. "
+        "Datas que já foram preenchidas manualmente não são alteradas."
+    )
+
+    if resumo_ajuste_datas["total"] > 0:
+        confirmar_datas_antigas = st.checkbox(
+            "Confirmo que desejo preencher as datas vazias dos pedidos antigos com a Entrega Prevista.",
+            key="confirmar_ajuste_datas_pedidos_antigos"
+        )
+
+        if st.button(
+            "Preencher datas dos pedidos antigos",
+            key="preencher_datas_pedidos_antigos",
+            disabled=not confirmar_datas_antigas,
+            use_container_width=True
+        ):
+            quantidade_atualizada = aplicar_entrega_prevista_nas_datas_antigas()
+
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+
+            st.success(
+                f"Datas preenchidas em {quantidade_atualizada} pedidos antigos."
+            )
+            st.rerun()
+    else:
+        st.success("Não há pedidos antigos pendentes para este ajuste.")
 
 
 if "mostrar_form_impressora" not in st.session_state:

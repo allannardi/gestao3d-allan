@@ -15,7 +15,7 @@ from components.pagination import paginar_itens
 from components.section import section_title, small_section
 from components.auth import require_login
 from database import conectar, inicializar_banco
-from components.formatters import data_br
+from components.formatters import data_br, data_para_date
 
 
 
@@ -42,19 +42,51 @@ STATUS_PEDIDOS = [
 ]
 
 
-def atualizar_status_pedido(pedido_id, novo_status):
+def atualizar_status_pedido(pedido_id, novo_status, data_final_producao=None, data_entrega_real=None):
     conn = conectar()
+
+    campos = ["status = ?"]
+    valores = [novo_status]
+
+    if data_final_producao:
+        campos.append("data_final_producao = ?")
+        valores.append(str(data_final_producao))
+
+    if data_entrega_real:
+        campos.append("data_entrega_real = ?")
+        valores.append(str(data_entrega_real))
+
+    valores.append(pedido_id)
+
     conn.execute(
-        """
+        f"""
         UPDATE pedidos
-        SET status = ?
+        SET {", ".join(campos)}
         WHERE id = ?
         """,
-        (novo_status, pedido_id)
+        valores
     )
     conn.commit()
     conn.close()
     limpar_cache_dados()
+
+
+def resumo_prazo_entrega(data_prevista, data_real):
+    prevista = data_para_date(data_prevista)
+    real = data_para_date(data_real)
+
+    if not prevista or not real:
+        return None
+
+    diferenca = (real - prevista).days
+
+    if diferenca == 0:
+        return "Entregue na data prevista."
+    if diferenca < 0:
+        dias = abs(diferenca)
+        return f"Entregue {dias} dia(s) antes do previsto."
+
+    return f"Entregue com {diferenca} dia(s) de atraso."
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -106,6 +138,8 @@ def garantir_tabelas():
         canal TEXT,
         data_pedido TEXT,
         data_entrega_prevista TEXT,
+        data_final_producao TEXT,
+        data_entrega_real TEXT,
         observacoes TEXT,
         impressora_id INTEGER
     )
@@ -122,6 +156,12 @@ def garantir_tabelas():
 
     if "impressora_id" not in nomes_colunas_pedidos:
         conn.execute("ALTER TABLE pedidos ADD COLUMN impressora_id INTEGER")
+
+    if "data_final_producao" not in nomes_colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN data_final_producao TEXT")
+
+    if "data_entrega_real" not in nomes_colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN data_entrega_real TEXT")
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS impressoras (
@@ -609,6 +649,8 @@ def carregar_pedidos_listagem_cache():
         ped.canal,
         ped.data_pedido,
         ped.data_entrega_prevista,
+        ped.data_final_producao,
+        ped.data_entrega_real,
         ped.observacoes,
         ped.impressora_id,
         i.codigo,
@@ -1501,6 +1543,8 @@ def editar_pedido_dialog(pedido_id):
         canal,
         data_pedido,
         data_entrega_prevista,
+        data_final_producao,
+        data_entrega_real,
         observacoes,
         impressora_id
     FROM pedidos
@@ -1576,10 +1620,10 @@ def editar_pedido_dialog(pedido_id):
             impressora_index = 0
 
             for idx_imp, impressora_item in enumerate(impressoras_editaveis):
-                if impressora_item[0] == pedido[12]:
+                if impressora_item[0] == pedido[14]:
                     impressora_index = idx_imp
                     break
-                if pedido[12] is None and impressora_item[7]:
+                if pedido[14] is None and impressora_item[7]:
                     impressora_index = idx_imp
 
             impressora_edit_label = st.selectbox(
@@ -1657,9 +1701,32 @@ def editar_pedido_dialog(pedido_id):
                 key=f"modal_data_entrega_{pedido_id}"
             )
 
+        data_final_producao_edit = pedido[11] or ""
+        data_entrega_real_edit = pedido[12] or ""
+
+        if status_edit in ["Pronto", "Entregue"] or pedido[11]:
+            data_final_producao_data = st.date_input(
+                "Data Final Produção",
+                value=data_para_date(pedido[11]) or date.today(),
+                format="DD/MM/YYYY",
+                key=f"modal_data_final_producao_{pedido_id}",
+                help="Data em que a produção foi finalizada. Usada no gráfico de utilização da impressora."
+            )
+            data_final_producao_edit = str(data_final_producao_data)
+
+        if status_edit == "Entregue" or pedido[12]:
+            data_entrega_real_data = st.date_input(
+                "Data da Entrega",
+                value=data_para_date(pedido[12]) or date.today(),
+                format="DD/MM/YYYY",
+                key=f"modal_data_entrega_real_{pedido_id}",
+                help="Data real em que o pedido foi entregue ao cliente."
+            )
+            data_entrega_real_edit = str(data_entrega_real_data)
+
         observacoes_edit = st.text_area(
             "Observações",
-            value=pedido[11] if pedido[11] else "",
+            value=pedido[13] if pedido[13] else "",
             key=f"modal_observacoes_{pedido_id}"
         )
 
@@ -1699,6 +1766,8 @@ def editar_pedido_dialog(pedido_id):
             canal = ?,
             data_pedido = ?,
             data_entrega_prevista = ?,
+            data_final_producao = ?,
+            data_entrega_real = ?,
             observacoes = ?,
             impressora_id = ?
         WHERE id = ?
@@ -1714,6 +1783,8 @@ def editar_pedido_dialog(pedido_id):
             canal_edit,
             data_pedido_edit,
             data_entrega_edit,
+            data_final_producao_edit,
+            data_entrega_real_edit,
             observacoes_edit,
             impressora_edit_id,
             pedido_id,
@@ -2818,8 +2889,8 @@ for pedido_custo in pedidos:
     if not peca_id_custo:
         continue
 
-    energia_pedido_custo = pedido_custo[21] if len(pedido_custo) > 21 and pedido_custo[21] is not None else energia_hora
-    depreciacao_pedido_custo = pedido_custo[22] if len(pedido_custo) > 22 and pedido_custo[22] is not None else depreciacao_hora
+    energia_pedido_custo = pedido_custo[23] if len(pedido_custo) > 23 and pedido_custo[23] is not None else energia_hora
+    depreciacao_pedido_custo = pedido_custo[24] if len(pedido_custo) > 24 and pedido_custo[24] is not None else depreciacao_hora
     chave_custo = (
         peca_id_custo,
         round(float(energia_pedido_custo), 6),
@@ -2860,13 +2931,15 @@ for pedido in pedidos:
     canal = pedido[13] if pedido[13] else "-"
     data_pedido = data_br(pedido[14])
     data_entrega = data_br(pedido[15])
-    observacoes = pedido[16] if pedido[16] else ""
-    impressora_id = pedido[17] if len(pedido) > 17 else None
-    impressora_codigo = pedido[18] if len(pedido) > 18 and pedido[18] else "-"
-    impressora_marca = pedido[19] if len(pedido) > 19 and pedido[19] else ""
-    impressora_modelo = pedido[20] if len(pedido) > 20 and pedido[20] else ""
-    energia_pedido = pedido[21] if len(pedido) > 21 and pedido[21] is not None else energia_hora
-    depreciacao_pedido = pedido[22] if len(pedido) > 22 and pedido[22] is not None else depreciacao_hora
+    data_final_producao = data_br(pedido[16])
+    data_entrega_real = data_br(pedido[17])
+    observacoes = pedido[18] if pedido[18] else ""
+    impressora_id = pedido[19] if len(pedido) > 19 else None
+    impressora_codigo = pedido[20] if len(pedido) > 20 and pedido[20] else "-"
+    impressora_marca = pedido[21] if len(pedido) > 21 and pedido[21] else ""
+    impressora_modelo = pedido[22] if len(pedido) > 22 and pedido[22] else ""
+    energia_pedido = pedido[23] if len(pedido) > 23 and pedido[23] is not None else energia_hora
+    depreciacao_pedido = pedido[24] if len(pedido) > 24 and pedido[24] is not None else depreciacao_hora
     impressora_nome = f"{impressora_codigo} - {impressora_marca} {impressora_modelo}".strip() if impressora_id else "Impressora padrão"
     chave_custo_pedido = (
         peca_id,
@@ -2931,6 +3004,27 @@ for pedido in pedidos:
                 key=status_rapido_key
             )
 
+        data_final_producao_status = None
+        data_entrega_real_status = None
+
+        if status == "Em Produção" and novo_status_rapido == "Pronto":
+            data_final_producao_status = st.date_input(
+                "Data Final Produção",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"data_final_producao_status_{pedido_id}",
+                help="Informe a data em que a produção foi finalizada."
+            )
+
+        if status == "Pronto" and novo_status_rapido == "Entregue":
+            data_entrega_real_status = st.date_input(
+                "Data da Entrega",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"data_entrega_real_status_{pedido_id}",
+                help="Informe a data real em que o pedido foi entregue."
+            )
+
         with col_status_2:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
 
@@ -2940,7 +3034,12 @@ for pedido in pedidos:
                 use_container_width=True,
                 disabled=(novo_status_rapido == status)
             ):
-                atualizar_status_pedido(pedido_id, novo_status_rapido)
+                atualizar_status_pedido(
+                    pedido_id,
+                    novo_status_rapido,
+                    data_final_producao=str(data_final_producao_status) if data_final_producao_status else None,
+                    data_entrega_real=str(data_entrega_real_status) if data_entrega_real_status else None,
+                )
                 st.session_state[status_atual_key] = novo_status_rapido
                 st.success(f"Status do pedido {codigo} atualizado para {novo_status_rapido}.")
                 st.rerun()
@@ -2963,7 +3062,19 @@ for pedido in pedidos:
 
             with col_d4:
                 st.write(f"**Data pedido:** {data_pedido}")
-                st.write(f"**Entrega:** {data_entrega}")
+                st.write(f"**Entrega prevista:** {data_entrega}")
+
+            col_data1, col_data2 = st.columns(2)
+
+            with col_data1:
+                st.write(f"**Data Final Produção:** {data_final_producao if data_final_producao else '-'}")
+
+            with col_data2:
+                st.write(f"**Data da Entrega:** {data_entrega_real if data_entrega_real else '-'}")
+
+            prazo_entrega = resumo_prazo_entrega(pedido[15], pedido[17])
+            if prazo_entrega:
+                st.caption(prazo_entrega)
 
             st.write(f"**Impressora:** {impressora_nome}")
 

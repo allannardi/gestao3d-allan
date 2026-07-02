@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import json
 from html import escape
 from collections import defaultdict
@@ -16,6 +15,7 @@ from components.kpi import kpi_card
 from components.section import section_title
 from components.auth import require_login
 from components.formatters import data_br, data_para_date
+from services.custos import calcular_resultado_pedido
 
 
 st.set_page_config(
@@ -990,32 +990,20 @@ def calcular_custos_pecas_lote(conn, peca_ids, energia_hora, depreciacao_hora, c
 
 def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_peca=None, custo_pos_processamento_hora=0):
     if custo_peca is None:
-        custo_peca = calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora)
+        custo_peca = calcular_custo_unitario_peca(
+            peca_id,
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
 
-    quantidade = quantidade if quantidade else 0
-    valor_unitario = valor_unitario if valor_unitario else 0
-    desconto = desconto if desconto else 0
-    frete = frete if frete else 0
-
-    subtotal = quantidade * valor_unitario
-    total = subtotal - desconto + frete
-    custo_total = quantidade * custo_peca["custo_unitario"]
-    lucro = total - custo_total
-    tempo_total = quantidade * custo_peca["tempo_unitario"]
-
-    margem_venda = (lucro / total) * 100 if total > 0 else 0
-    lucro_hora = lucro / tempo_total if tempo_total > 0 else 0
-
-    return {
-        "subtotal": subtotal,
-        "total": total,
-        "custo_total": custo_total,
-        "lucro": lucro,
-        "tempo_total": tempo_total,
-        "margem_venda": margem_venda,
-        "lucro_hora": lucro_hora,
-    }
-
+    return calcular_resultado_pedido(
+        custo_peca,
+        quantidade,
+        valor_unitario,
+        desconto,
+        frete,
+    )
 
 def largura_coluna(header):
     larguras = {

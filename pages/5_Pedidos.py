@@ -16,6 +16,208 @@ from components.section import section_title, small_section
 from components.auth import require_login
 from database import conectar, inicializar_banco
 from components.formatters import data_br, data_para_date
+from services.custos import calcular_resultado_pedido
+from services.pedidos import STATUS_PEDIDOS, atualizar_status_pedido_db, gerar_codigo_pedido, resumo_prazo_entrega
+
+try:
+    from services.pedidos import (
+        carregar_clientes,
+        carregar_impressoras_pedidos,
+        carregar_pecas,
+        cor_status,
+        cor_status_hex,
+        label_impressora,
+        selecionar_impressora_padrao,
+    )
+except ImportError:
+    @st.cache_data(ttl=30, show_spinner=False)
+    def carregar_impressoras_pedidos():
+        conn = conectar()
+
+        impressoras = conn.execute("""
+        SELECT
+            id,
+            codigo,
+            marca,
+            modelo,
+            status,
+            COALESCE(energia_hora, 0),
+            COALESCE(depreciacao_hora, 0),
+            COALESCE(is_padrao, 0)
+        FROM impressoras
+        WHERE status IS NULL OR status = 'Ativa' OR COALESCE(is_padrao, 0) = 1
+        ORDER BY COALESCE(is_padrao, 0) DESC, id ASC
+        """).fetchall()
+
+        conn.close()
+
+        return [tuple(i) for i in impressoras]
+
+
+    def selecionar_impressora_padrao(impressoras):
+        if not impressoras:
+            return None
+
+        for impressora in impressoras:
+            if impressora[7]:
+                return impressora
+
+        return impressoras[0]
+
+
+    def label_impressora(impressora):
+        if not impressora:
+            return "Impressora padrão"
+
+        codigo = impressora[1] or "-"
+        marca = impressora[2] or ""
+        modelo = impressora[3] or ""
+        sufixo = " · Padrão" if impressora[7] else ""
+        return f"{codigo} - {marca} {modelo}{sufixo}".strip()
+
+
+    @st.cache_data(ttl=30, show_spinner=False)
+    def carregar_clientes():
+        conn = conectar()
+
+        clientes = conn.execute("""
+        SELECT
+            id,
+            codigo,
+            nome,
+            telefone,
+            cidade,
+            estado
+        FROM clientes
+        WHERE status IS NULL OR status = 'Ativo'
+        ORDER BY nome ASC
+        """).fetchall()
+
+        conn.close()
+
+        return [tuple(c) for c in clientes]
+
+
+    @st.cache_data(ttl=30, show_spinner=False)
+    def carregar_pecas():
+        conn = conectar()
+
+        pecas = conn.execute("""
+        SELECT
+            p.id,
+            p.codigo,
+            p.nome,
+            p.categoria,
+            p.peso_g,
+            p.tempo_impressao_h,
+            p.tempo_pos_processamento_min,
+            p.embalagem_custo,
+            COALESCE(p.quantidade_lote, 1),
+            f.codigo,
+            f.nome,
+            f.custo_grama
+        FROM pecas p
+        LEFT JOIN filamentos f ON p.filamento_id = f.id
+        ORDER BY p.nome ASC
+        """).fetchall()
+
+        conn.close()
+
+        return [tuple(p) for p in pecas]
+
+
+    def cor_status(status):
+        if status in ["Entregue", "Pronto"]:
+            return "green"
+        if status in ["Encomendado", "Em Produção"]:
+            return "blue"
+        if status == "Orçamento":
+            return "orange"
+        if status == "Cancelado":
+            return "red"
+        return "gray"
+
+
+    def cor_status_hex(status):
+        mapa = {
+            "Orçamento": "#B85C20",
+            "Encomendado": "#0C65AA",
+            "Em Produção": "#100690",
+            "Pronto": "#1F8A4C",
+            "Entregue": "#1F8A4C",
+            "Cancelado": "#D11A2A",
+        }
+        return mapa.get(status, "#8A8F98")
+
+try:
+    from services.pedidos import carregar_pedidos_listagem_cache
+except ImportError:
+    @st.cache_data(ttl=30, show_spinner=False)
+    def carregar_pedidos_listagem_cache():
+        conn = conectar()
+
+        pedidos = conn.execute("""
+        SELECT
+            ped.id,
+            ped.codigo,
+            ped.cliente_id,
+            c.codigo,
+            c.nome,
+            ped.peca_id,
+            pc.codigo,
+            pc.nome,
+            ped.quantidade,
+            ped.valor_unitario,
+            ped.desconto,
+            ped.frete,
+            ped.status,
+            ped.canal,
+            ped.data_pedido,
+            ped.data_entrega_prevista,
+            ped.data_final_producao,
+            ped.data_entrega_real,
+            ped.observacoes,
+            ped.impressora_id,
+            i.codigo,
+            i.marca,
+            i.modelo,
+            i.energia_hora,
+            i.depreciacao_hora
+        FROM pedidos ped
+        LEFT JOIN clientes c ON ped.cliente_id = c.id
+        LEFT JOIN pecas pc ON ped.peca_id = pc.id
+        LEFT JOIN impressoras i ON ped.impressora_id = i.id
+        ORDER BY ped.id DESC
+        """).fetchall()
+
+        pedido_ids = sorted({pedido[0] for pedido in pedidos if pedido[0]})
+        filamentos_por_pedido = {}
+
+        if pedido_ids:
+            placeholders = ",".join(["?"] * len(pedido_ids))
+
+            filamentos_rows = conn.execute(f"""
+            SELECT
+                pf.pedido_id,
+                f.codigo,
+                f.nome,
+                f.material,
+                f.cor,
+                COALESCE(pf.peso_g, 0),
+                COALESCE(pf.observacao, '')
+            FROM pedido_filamentos pf
+            LEFT JOIN filamentos f ON pf.filamento_id = f.id
+            WHERE pf.pedido_id IN ({placeholders})
+            ORDER BY pf.id ASC
+            """, pedido_ids).fetchall()
+
+            for row in filamentos_rows:
+                pedido_id = row[0]
+                filamentos_por_pedido.setdefault(pedido_id, []).append(tuple(row[1:]))
+
+        conn.close()
+
+        return [tuple(p) for p in pedidos], filamentos_por_pedido
 
 
 
@@ -32,61 +234,16 @@ def limpar_cache_dados():
         pass
 
 
-STATUS_PEDIDOS = [
-    "Orçamento",
-    "Encomendado",
-    "Em Produção",
-    "Pronto",
-    "Entregue",
-    "Cancelado",
-]
 
 
 def atualizar_status_pedido(pedido_id, novo_status, data_final_producao=None, data_entrega_real=None):
-    conn = conectar()
-
-    campos = ["status = ?"]
-    valores = [novo_status]
-
-    if data_final_producao:
-        campos.append("data_final_producao = ?")
-        valores.append(str(data_final_producao))
-
-    if data_entrega_real:
-        campos.append("data_entrega_real = ?")
-        valores.append(str(data_entrega_real))
-
-    valores.append(pedido_id)
-
-    conn.execute(
-        f"""
-        UPDATE pedidos
-        SET {", ".join(campos)}
-        WHERE id = ?
-        """,
-        valores
+    atualizar_status_pedido_db(
+        pedido_id,
+        novo_status,
+        data_final_producao=data_final_producao,
+        data_entrega_real=data_entrega_real,
     )
-    conn.commit()
-    conn.close()
     limpar_cache_dados()
-
-
-def resumo_prazo_entrega(data_prevista, data_real):
-    prevista = data_para_date(data_prevista)
-    real = data_para_date(data_real)
-
-    if not prevista or not real:
-        return None
-
-    diferenca = (real - prevista).days
-
-    if diferenca == 0:
-        return "Entregue na data prevista."
-    if diferenca < 0:
-        dias = abs(diferenca)
-        return f"Entregue {dias} dia(s) antes do previsto."
-
-    return f"Entregue com {diferenca} dia(s) de atraso."
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -194,15 +351,6 @@ def gerar_codigo_cliente(conn):
     return f"CLI-{proximo:04d}"
 
 
-def gerar_codigo_pedido(conn):
-    ultimo = conn.execute("""
-        SELECT MAX(id)
-        FROM pedidos
-    """).fetchone()[0]
-
-    proximo = 1 if ultimo is None else ultimo + 1
-    return f"PED-{proximo:04d}"
-
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_configuracoes():
@@ -224,100 +372,16 @@ def carregar_configuracoes():
     return tuple(config) if config else None
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def carregar_impressoras_pedidos():
-    conn = conectar()
-
-    impressoras = conn.execute("""
-    SELECT
-        id,
-        codigo,
-        marca,
-        modelo,
-        status,
-        COALESCE(energia_hora, 0),
-        COALESCE(depreciacao_hora, 0),
-        COALESCE(is_padrao, 0)
-    FROM impressoras
-    WHERE status IS NULL OR status = 'Ativa' OR COALESCE(is_padrao, 0) = 1
-    ORDER BY COALESCE(is_padrao, 0) DESC, id ASC
-    """).fetchall()
-
-    conn.close()
-
-    return [tuple(i) for i in impressoras]
 
 
-def selecionar_impressora_padrao(impressoras):
-    if not impressoras:
-        return None
-
-    for impressora in impressoras:
-        if impressora[7]:
-            return impressora
-
-    return impressoras[0]
 
 
-def label_impressora(impressora):
-    if not impressora:
-        return "Impressora padrão"
-
-    codigo = impressora[1] or "-"
-    marca = impressora[2] or ""
-    modelo = impressora[3] or ""
-    sufixo = " · Padrão" if impressora[7] else ""
-    return f"{codigo} - {marca} {modelo}{sufixo}".strip()
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def carregar_clientes():
-    conn = conectar()
-
-    clientes = conn.execute("""
-    SELECT
-        id,
-        codigo,
-        nome,
-        telefone,
-        cidade,
-        estado
-    FROM clientes
-    WHERE status IS NULL OR status = 'Ativo'
-    ORDER BY nome ASC
-    """).fetchall()
-
-    conn.close()
-
-    return [tuple(c) for c in clientes]
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def carregar_pecas():
-    conn = conectar()
 
-    pecas = conn.execute("""
-    SELECT
-        p.id,
-        p.codigo,
-        p.nome,
-        p.categoria,
-        p.peso_g,
-        p.tempo_impressao_h,
-        p.tempo_pos_processamento_min,
-        p.embalagem_custo,
-        COALESCE(p.quantidade_lote, 1),
-        f.codigo,
-        f.nome,
-        f.custo_grama
-    FROM pecas p
-    LEFT JOIN filamentos f ON p.filamento_id = f.id
-    ORDER BY p.nome ASC
-    """).fetchall()
 
-    conn.close()
-
-    return [tuple(p) for p in pecas]
 
 
 def carregar_acessorios_da_peca(conn, peca_id):
@@ -521,32 +585,20 @@ def calcular_custos_pecas_lote(conn, peca_ids, energia_hora, depreciacao_hora, c
 
 def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_peca=None, custo_pos_processamento_hora=0):
     if custo_peca is None:
-        custo_peca = calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora)
+        custo_peca = calcular_custo_unitario_peca(
+            peca_id,
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
 
-    quantidade = quantidade if quantidade else 0
-    valor_unitario = valor_unitario if valor_unitario else 0
-    desconto = desconto if desconto else 0
-    frete = frete if frete else 0
-
-    subtotal = quantidade * valor_unitario
-    total = subtotal - desconto + frete
-    custo_total = quantidade * custo_peca["custo_unitario"]
-    lucro = total - custo_total
-    lucro_percentual = (lucro / custo_total) * 100 if custo_total > 0 else 0
-    lucro_unitario = lucro / quantidade if quantidade > 0 else 0
-
-    return {
-        "custo_unitario": custo_peca["custo_unitario"],
-        "peso_unitario": custo_peca["peso_unitario"],
-        "tempo_unitario": custo_peca["tempo_unitario"],
-        "subtotal": subtotal,
-        "total": total,
-        "custo_total": custo_total,
-        "lucro": lucro,
-        "lucro_percentual": lucro_percentual,
-        "lucro_unitario": lucro_unitario,
-    }
-
+    return calcular_resultado_pedido(
+        custo_peca,
+        quantidade,
+        valor_unitario,
+        desconto,
+        frete,
+    )
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_pedidos_resumo_cache(energia_hora, depreciacao_hora, custo_pos_processamento_hora):
@@ -622,78 +674,6 @@ def carregar_pedidos_resumo_cache(energia_hora, depreciacao_hora, custo_pos_proc
     }
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def carregar_pedidos_listagem_cache():
-    """
-    Carrega pedidos e filamentos das peças em lote.
-
-    Evita nova consulta SQL a cada busca e evita consulta por item dentro da lista.
-    """
-    conn = conectar()
-
-    pedidos = conn.execute("""
-    SELECT
-        ped.id,
-        ped.codigo,
-        ped.cliente_id,
-        c.codigo,
-        c.nome,
-        ped.peca_id,
-        pc.codigo,
-        pc.nome,
-        ped.quantidade,
-        ped.valor_unitario,
-        ped.desconto,
-        ped.frete,
-        ped.status,
-        ped.canal,
-        ped.data_pedido,
-        ped.data_entrega_prevista,
-        ped.data_final_producao,
-        ped.data_entrega_real,
-        ped.observacoes,
-        ped.impressora_id,
-        i.codigo,
-        i.marca,
-        i.modelo,
-        i.energia_hora,
-        i.depreciacao_hora
-    FROM pedidos ped
-    LEFT JOIN clientes c ON ped.cliente_id = c.id
-    LEFT JOIN pecas pc ON ped.peca_id = pc.id
-    LEFT JOIN impressoras i ON ped.impressora_id = i.id
-    ORDER BY ped.id DESC
-    """).fetchall()
-
-    pedido_ids = sorted({pedido[0] for pedido in pedidos if pedido[0]})
-    filamentos_por_pedido = {}
-
-    if pedido_ids:
-        placeholders = ",".join(["?"] * len(pedido_ids))
-
-        filamentos_rows = conn.execute(f"""
-        SELECT
-            pf.pedido_id,
-            f.codigo,
-            f.nome,
-            f.material,
-            f.cor,
-            COALESCE(pf.peso_g, 0),
-            COALESCE(pf.observacao, '')
-        FROM pedido_filamentos pf
-        LEFT JOIN filamentos f ON pf.filamento_id = f.id
-        WHERE pf.pedido_id IN ({placeholders})
-        ORDER BY pf.id ASC
-        """, pedido_ids).fetchall()
-
-        for row in filamentos_rows:
-            pedido_id = row[0]
-            filamentos_por_pedido.setdefault(pedido_id, []).append(tuple(row[1:]))
-
-    conn.close()
-
-    return [tuple(p) for p in pedidos], filamentos_por_pedido
-
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_custos_pedidos_cache(peca_ids, energia_hora, depreciacao_hora, custo_pos_processamento_hora):
@@ -713,28 +693,10 @@ def carregar_custos_pedidos_cache(peca_ids, energia_hora, depreciacao_hora, cust
 
 
 
-def cor_status(status):
-    if status in ["Entregue", "Pronto"]:
-        return "green"
-    if status in ["Encomendado", "Em Produção"]:
-        return "blue"
-    if status == "Orçamento":
-        return "orange"
-    if status == "Cancelado":
-        return "red"
-    return "gray"
 
 
-def cor_status_hex(status):
-    mapa = {
-        "Orçamento": "#B85C20",
-        "Encomendado": "#0C65AA",
-        "Em Produção": "#100690",
-        "Pronto": "#1F8A4C",
-        "Entregue": "#1F8A4C",
-        "Cancelado": "#D11A2A",
-    }
-    return mapa.get(status, "#8A8F98")
+
+
 
 
 def pedidos_mobile_css():

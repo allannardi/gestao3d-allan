@@ -11,6 +11,22 @@ from components.kpi import kpi_card
 from components.section import section_title, small_section
 from components.auth import require_login, alterar_senha_app, usuario_auth_atual, senha_personalizada_ativa
 from database import conectar, inicializar_banco
+from services.impressoras import (
+    PRESETS_IMPRESSORAS,
+    calcular_energia_hora,
+    carregar_impressora_padrao,
+    carregar_impressoras,
+    garantir_coluna_configuracoes_valor_kwh,
+    garantir_impressoras_configuracoes,
+    gerar_codigo_impressora,
+    sincronizar_configuracao_com_impressora_padrao,
+)
+from services.admin_ajustes import (
+    aplicar_entrega_prevista_nas_datas_antigas,
+    aplicar_impressora_padrao_pedidos_antigos,
+    contar_pedidos_para_ajuste_datas_previstas,
+    contar_pedidos_sem_impressora,
+)
 
 
 
@@ -27,367 +43,13 @@ def moeda_md(valor):
     return moeda(valor).replace("$", "\\$")
 
 
-PRESETS_IMPRESSORAS = {
-    "Bambu Lab A1 Mini": {
-        "marca": "Bambu Lab",
-        "modelo": "A1 Mini",
-        "consumo_w": 150.0,
-        "depreciacao_hora": 0.75,
-    },
-    "Bambu Lab A1": {
-        "marca": "Bambu Lab",
-        "modelo": "A1",
-        "consumo_w": 200.0,
-        "depreciacao_hora": 0.90,
-    },
-    "Creality Ender-3 V3 SE": {
-        "marca": "Creality",
-        "modelo": "Ender-3 V3 SE",
-        "consumo_w": 270.0,
-        "depreciacao_hora": 0.75,
-    },
-    "Creality Ender-3 V3 KE": {
-        "marca": "Creality",
-        "modelo": "Ender-3 V3 KE",
-        "consumo_w": 350.0,
-        "depreciacao_hora": 0.85,
-    },
-    "Anycubic Kobra 2 Neo": {
-        "marca": "Anycubic",
-        "modelo": "Kobra 2 Neo",
-        "consumo_w": 400.0,
-        "depreciacao_hora": 0.80,
-    },
-    "Personalizada": {
-        "marca": "",
-        "modelo": "",
-        "consumo_w": 200.0,
-        "depreciacao_hora": 0.75,
-    },
-}
-
-
-def calcular_energia_hora(consumo_w, valor_kwh):
-    consumo_w = consumo_w if consumo_w else 0
-    valor_kwh = valor_kwh if valor_kwh else 0
-    return (consumo_w / 1000) * valor_kwh
-
-
-def garantir_coluna_configuracoes_valor_kwh():
-    conn = conectar()
-    colunas = conn.execute("PRAGMA table_info(configuracoes)").fetchall()
-    nomes_colunas = [item[1] for item in colunas]
-
-    if "valor_kwh" not in nomes_colunas:
-        conn.execute("ALTER TABLE configuracoes ADD COLUMN valor_kwh REAL DEFAULT 0.65")
-        conn.commit()
-
-    conn.close()
-
-
-def garantir_impressoras_configuracoes():
-    """
-    Garante a tabela de impressoras diretamente na tela Configurações.
-
-    Isto evita erro caso o Streamlit ainda esteja com cache/sessão antiga
-    ou caso database.py não tenha executado a migração antes da página carregar.
-    """
-    conn = conectar()
-
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS impressoras (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        codigo TEXT UNIQUE,
-        marca TEXT,
-        modelo TEXT,
-        status TEXT DEFAULT 'Ativa',
-        consumo_w REAL DEFAULT 200,
-        valor_kwh REAL DEFAULT 0.65,
-        energia_hora REAL DEFAULT 0,
-        depreciacao_hora REAL DEFAULT 0.75,
-        observacoes TEXT,
-        is_padrao INTEGER DEFAULT 0,
-        data_cadastro TEXT
-    )
-    """)
-
-    total = conn.execute("SELECT COUNT(*) FROM impressoras").fetchone()[0]
-
-    if total == 0:
-        config_atual = conn.execute("""
-        SELECT
-            COALESCE(energia_hora, 0.15),
-            COALESCE(depreciacao_hora, 0.75),
-            COALESCE(valor_kwh, 0.65)
-        FROM configuracoes
-        LIMIT 1
-        """).fetchone()
-
-        energia_atual = config_atual[0] if config_atual else 0.15
-        depreciacao_atual = config_atual[1] if config_atual else 0.75
-        valor_kwh = config_atual[2] if config_atual else 0.65
-        consumo_w = (energia_atual / valor_kwh) * 1000 if valor_kwh > 0 and energia_atual > 0 else 200
-        energia_hora = calcular_energia_hora(consumo_w, valor_kwh)
-
-        conn.execute("""
-        INSERT INTO impressoras
-        (
-            codigo,
-            marca,
-            modelo,
-            status,
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_hora,
-            observacoes,
-            is_padrao,
-            data_cadastro
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            "IMP-001",
-            "Bambu Lab",
-            "A1 Mini",
-            "Ativa",
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_atual,
-            "Impressora padrão criada automaticamente a partir das configurações existentes.",
-            1,
-            str(date.today())
-        ))
-
-        conn.execute("""
-        UPDATE configuracoes
-        SET
-            energia_hora = ?,
-            depreciacao_hora = ?
-        """,
-        (
-            energia_hora,
-            depreciacao_atual,
-        ))
-
-    conn.commit()
-    conn.close()
-
-
-def gerar_codigo_impressora(conn):
-    ultimo = conn.execute("SELECT MAX(id) FROM impressoras").fetchone()[0]
-    proximo = 1 if ultimo is None else ultimo + 1
-    return f"IMP-{proximo:03d}"
-
-
-def carregar_impressoras():
-    conn = conectar()
-    impressoras = conn.execute("""
-    SELECT
-        id,
-        codigo,
-        marca,
-        modelo,
-        status,
-        consumo_w,
-        valor_kwh,
-        energia_hora,
-        depreciacao_hora,
-        observacoes,
-        COALESCE(is_padrao, 0),
-        data_cadastro
-    FROM impressoras
-    ORDER BY COALESCE(is_padrao, 0) DESC, id ASC
-    """).fetchall()
-    conn.close()
-    return impressoras
-
-
-def carregar_impressora_padrao():
-    conn = conectar()
-    impressora = conn.execute("""
-    SELECT
-        id,
-        codigo,
-        marca,
-        modelo,
-        status,
-        consumo_w,
-        valor_kwh,
-        energia_hora,
-        depreciacao_hora,
-        observacoes,
-        COALESCE(is_padrao, 0),
-        data_cadastro
-    FROM impressoras
-    WHERE COALESCE(is_padrao, 0) = 1
-    ORDER BY id ASC
-    LIMIT 1
-    """).fetchone()
-
-    if impressora is None:
-        impressora = conn.execute("""
-        SELECT
-            id,
-            codigo,
-            marca,
-            modelo,
-            status,
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_hora,
-            observacoes,
-            COALESCE(is_padrao, 0),
-            data_cadastro
-        FROM impressoras
-        ORDER BY id ASC
-        LIMIT 1
-        """).fetchone()
-
-    conn.close()
-    return impressora
-
-
-def contar_pedidos_sem_impressora():
-    conn = conectar()
-
-    try:
-        total = conn.execute("""
-        SELECT COUNT(*)
-        FROM pedidos
-        WHERE impressora_id IS NULL
-        """).fetchone()[0]
-    except Exception:
-        total = 0
-
-    conn.close()
-    return total
-
-
-def aplicar_impressora_padrao_pedidos_antigos(impressora_id):
-    conn = conectar()
-
-    resultado = conn.execute("""
-    UPDATE pedidos
-    SET impressora_id = ?
-    WHERE impressora_id IS NULL
-    """, (impressora_id,))
-
-    quantidade = resultado.rowcount if resultado.rowcount is not None else 0
-
-    conn.commit()
-    conn.close()
-
-    return quantidade
-
-
-def contar_pedidos_para_ajuste_datas_previstas():
-    conn = conectar()
-
-    try:
-        total = conn.execute("""
-        SELECT COUNT(*)
-        FROM pedidos
-        WHERE data_entrega_prevista IS NOT NULL
-          AND TRIM(data_entrega_prevista) <> ''
-          AND (
-                data_final_producao IS NULL
-                OR TRIM(data_final_producao) = ''
-                OR data_entrega_real IS NULL
-                OR TRIM(data_entrega_real) = ''
-          )
-        """).fetchone()[0]
-
-        sem_data_final = conn.execute("""
-        SELECT COUNT(*)
-        FROM pedidos
-        WHERE data_entrega_prevista IS NOT NULL
-          AND TRIM(data_entrega_prevista) <> ''
-          AND (data_final_producao IS NULL OR TRIM(data_final_producao) = '')
-        """).fetchone()[0]
-
-        sem_data_entrega = conn.execute("""
-        SELECT COUNT(*)
-        FROM pedidos
-        WHERE data_entrega_prevista IS NOT NULL
-          AND TRIM(data_entrega_prevista) <> ''
-          AND (data_entrega_real IS NULL OR TRIM(data_entrega_real) = '')
-        """).fetchone()[0]
-
-    except Exception:
-        total = 0
-        sem_data_final = 0
-        sem_data_entrega = 0
-
-    conn.close()
-
-    return {
-        "total": total,
-        "sem_data_final": sem_data_final,
-        "sem_data_entrega": sem_data_entrega,
-    }
-
-
-def aplicar_entrega_prevista_nas_datas_antigas():
-    conn = conectar()
-
-    resultado = conn.execute("""
-    UPDATE pedidos
-    SET
-        data_final_producao = CASE
-            WHEN data_final_producao IS NULL OR TRIM(data_final_producao) = ''
-            THEN data_entrega_prevista
-            ELSE data_final_producao
-        END,
-        data_entrega_real = CASE
-            WHEN data_entrega_real IS NULL OR TRIM(data_entrega_real) = ''
-            THEN data_entrega_prevista
-            ELSE data_entrega_real
-        END
-    WHERE data_entrega_prevista IS NOT NULL
-      AND TRIM(data_entrega_prevista) <> ''
-      AND (
-            data_final_producao IS NULL
-            OR TRIM(data_final_producao) = ''
-            OR data_entrega_real IS NULL
-            OR TRIM(data_entrega_real) = ''
-      )
-    """)
-
-    quantidade = resultado.rowcount if resultado.rowcount is not None else 0
-
-    conn.commit()
-    conn.close()
-
-    return quantidade
-
-
-def sincronizar_configuracao_com_impressora_padrao(conn, impressora_id):
-    impressora = conn.execute("""
-    SELECT energia_hora, depreciacao_hora
-    FROM impressoras
-    WHERE id = ?
-    """, (impressora_id,)).fetchone()
-
-    if impressora:
-        conn.execute("""
-        UPDATE configuracoes
-        SET
-            energia_hora = ?,
-            depreciacao_hora = ?
-        """, (
-            impressora[0],
-            impressora[1],
-        ))
 
 
 st.markdown(f"<style>{carregar_css_base_cache()}</style>", unsafe_allow_html=True)
 
 require_login()
 
-inicializar_banco(force=True)
+inicializar_banco()
 
 sidebar()
 mobile_bottom_nav("mais")
@@ -745,121 +407,6 @@ with st.container(border=True):
 
 
 
-with st.container(border=True):
-
-    small_section("Ajuste em lote")
-
-    if impressora_padrao:
-        impressora_padrao_label = f"{impressora_padrao[1]} - {impressora_padrao[2]} {impressora_padrao[3]}"
-
-        col_lote1, col_lote2 = st.columns([2, 1])
-
-        with col_lote1:
-            st.markdown(
-                f"""
-                **Pedidos sem impressora:** {pedidos_sem_impressora}  
-                **Impressora padrão atual:** {impressora_padrao_label}
-                """
-            )
-            st.caption(
-                "Use esta opção para preencher automaticamente a impressora padrão nos pedidos antigos que ainda estão sem impressora."
-            )
-
-        with col_lote2:
-            kpi_card("Pendentes", str(pedidos_sem_impressora), "sem impressora", "orange" if pedidos_sem_impressora > 0 else "green")
-
-        if pedidos_sem_impressora > 0:
-            confirmar_lote = st.checkbox(
-                "Confirmo que desejo aplicar a impressora padrão aos pedidos antigos sem impressora.",
-                key="confirmar_lote_impressora_padrao"
-            )
-
-            if st.button(
-                "Aplicar impressora padrão aos pedidos antigos",
-                key="aplicar_impressora_padrao_lote",
-                disabled=not confirmar_lote,
-                use_container_width=True
-            ):
-                quantidade_atualizada = aplicar_impressora_padrao_pedidos_antigos(impressora_padrao[0])
-
-                try:
-                    st.cache_data.clear()
-                except Exception:
-                    pass
-
-                st.success(
-                    f"Impressora padrão aplicada em {quantidade_atualizada} pedidos antigos."
-                )
-                st.rerun()
-        else:
-            st.success("Todos os pedidos já possuem impressora vinculada.")
-    else:
-        st.warning("Cadastre ou defina uma impressora padrão antes de aplicar em lote.")
-
-
-
-with st.container(border=True):
-
-    small_section("Ajuste pontual de datas dos pedidos antigos")
-
-    col_datas1, col_datas2, col_datas3 = st.columns(3)
-
-    with col_datas1:
-        kpi_card(
-            "Pedidos elegíveis",
-            str(resumo_ajuste_datas["total"]),
-            "com entrega prevista",
-            "orange" if resumo_ajuste_datas["total"] > 0 else "green"
-        )
-
-    with col_datas2:
-        kpi_card(
-            "Sem Data Final Produção",
-            str(resumo_ajuste_datas["sem_data_final"]),
-            "será preenchida",
-            "orange" if resumo_ajuste_datas["sem_data_final"] > 0 else "green"
-        )
-
-    with col_datas3:
-        kpi_card(
-            "Sem Data da Entrega",
-            str(resumo_ajuste_datas["sem_data_entrega"]),
-            "será preenchida",
-            "orange" if resumo_ajuste_datas["sem_data_entrega"] > 0 else "green"
-        )
-
-    st.caption(
-        "Esta ação pontual preenche Data Final Produção e Data da Entrega usando a Entrega Prevista dos pedidos antigos. "
-        "Datas que já foram preenchidas manualmente não são alteradas."
-    )
-
-    if resumo_ajuste_datas["total"] > 0:
-        confirmar_datas_antigas = st.checkbox(
-            "Confirmo que desejo preencher as datas vazias dos pedidos antigos com a Entrega Prevista.",
-            key="confirmar_ajuste_datas_pedidos_antigos"
-        )
-
-        if st.button(
-            "Preencher datas dos pedidos antigos",
-            key="preencher_datas_pedidos_antigos",
-            disabled=not confirmar_datas_antigas,
-            use_container_width=True
-        ):
-            quantidade_atualizada = aplicar_entrega_prevista_nas_datas_antigas()
-
-            try:
-                st.cache_data.clear()
-            except Exception:
-                pass
-
-            st.success(
-                f"Datas preenchidas em {quantidade_atualizada} pedidos antigos."
-            )
-            st.rerun()
-    else:
-        st.success("Não há pedidos antigos pendentes para este ajuste.")
-
-
 if "mostrar_form_impressora" not in st.session_state:
     st.session_state["mostrar_form_impressora"] = False
 
@@ -997,6 +544,127 @@ if st.session_state["mostrar_form_impressora"]:
                 st.success(f"Impressora {codigo} cadastrada com sucesso!")
                 st.session_state["mostrar_form_impressora"] = False
                 st.rerun()
+
+
+section_title(
+    "Ajustes de Admin",
+    "Ações pontuais e correções em lote para manutenção do sistema"
+)
+
+
+with st.container(border=True):
+
+    small_section("Ajuste em lote")
+
+    if impressora_padrao:
+        impressora_padrao_label = f"{impressora_padrao[1]} - {impressora_padrao[2]} {impressora_padrao[3]}"
+
+        col_lote1, col_lote2 = st.columns([2, 1])
+
+        with col_lote1:
+            st.markdown(
+                f"""
+                **Pedidos sem impressora:** {pedidos_sem_impressora}  
+                **Impressora padrão atual:** {impressora_padrao_label}
+                """
+            )
+            st.caption(
+                "Use esta opção para preencher automaticamente a impressora padrão nos pedidos antigos que ainda estão sem impressora."
+            )
+
+        with col_lote2:
+            kpi_card("Pendentes", str(pedidos_sem_impressora), "sem impressora", "orange" if pedidos_sem_impressora > 0 else "green")
+
+        if pedidos_sem_impressora > 0:
+            confirmar_lote = st.checkbox(
+                "Confirmo que desejo aplicar a impressora padrão aos pedidos antigos sem impressora.",
+                key="confirmar_lote_impressora_padrao"
+            )
+
+            if st.button(
+                "Aplicar impressora padrão aos pedidos antigos",
+                key="aplicar_impressora_padrao_lote",
+                disabled=not confirmar_lote,
+                use_container_width=True
+            ):
+                quantidade_atualizada = aplicar_impressora_padrao_pedidos_antigos(impressora_padrao[0])
+
+                try:
+                    st.cache_data.clear()
+                except Exception:
+                    pass
+
+                st.success(
+                    f"Impressora padrão aplicada em {quantidade_atualizada} pedidos antigos."
+                )
+                st.rerun()
+        else:
+            st.success("Todos os pedidos já possuem impressora vinculada.")
+    else:
+        st.warning("Cadastre ou defina uma impressora padrão antes de aplicar em lote.")
+
+
+
+with st.container(border=True):
+
+    small_section("Ajuste pontual de datas dos pedidos antigos")
+
+    col_datas1, col_datas2, col_datas3 = st.columns(3)
+
+    with col_datas1:
+        kpi_card(
+            "Pedidos elegíveis",
+            str(resumo_ajuste_datas["total"]),
+            "com entrega prevista",
+            "orange" if resumo_ajuste_datas["total"] > 0 else "green"
+        )
+
+    with col_datas2:
+        kpi_card(
+            "Sem Data Final Produção",
+            str(resumo_ajuste_datas["sem_data_final"]),
+            "será preenchida",
+            "orange" if resumo_ajuste_datas["sem_data_final"] > 0 else "green"
+        )
+
+    with col_datas3:
+        kpi_card(
+            "Sem Data da Entrega",
+            str(resumo_ajuste_datas["sem_data_entrega"]),
+            "será preenchida",
+            "orange" if resumo_ajuste_datas["sem_data_entrega"] > 0 else "green"
+        )
+
+    st.caption(
+        "Esta ação pontual preenche Data Final Produção e Data da Entrega usando a Entrega Prevista dos pedidos antigos. "
+        "Datas que já foram preenchidas manualmente não são alteradas."
+    )
+
+    if resumo_ajuste_datas["total"] > 0:
+        confirmar_datas_antigas = st.checkbox(
+            "Confirmo que desejo preencher as datas vazias dos pedidos antigos com a Entrega Prevista.",
+            key="confirmar_ajuste_datas_pedidos_antigos"
+        )
+
+        if st.button(
+            "Preencher datas dos pedidos antigos",
+            key="preencher_datas_pedidos_antigos",
+            disabled=not confirmar_datas_antigas,
+            use_container_width=True
+        ):
+            quantidade_atualizada = aplicar_entrega_prevista_nas_datas_antigas()
+
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+
+            st.success(
+                f"Datas preenchidas em {quantidade_atualizada} pedidos antigos."
+            )
+            st.rerun()
+    else:
+        st.success("Não há pedidos antigos pendentes para este ajuste.")
 
 
 section_title(

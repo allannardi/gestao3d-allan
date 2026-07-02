@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v13_13_ajuste_datas_pedidos_antigos"
+SCHEMA_VERSION = "v14_08_corrige_imports_auxiliares_pedidos"
 
 
 def _get_secret(section, key, default=None):
@@ -575,7 +575,6 @@ def inicializar_banco(force=False):
         criar_banco()
         garantir_migracoes()
         inserir_configuracao_padrao()
-        inserir_impressora_padrao()
         inserir_impressora_padrao()
         inserir_categorias_pecas_padrao()
 

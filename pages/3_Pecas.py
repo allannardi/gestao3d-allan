@@ -16,6 +16,7 @@ from components.section import section_title, small_section
 from components.auth import require_login
 from database import conectar, inicializar_banco
 from components.formatters import data_br
+from services.custos import calcular_custos_peca
 
 
 
@@ -450,79 +451,21 @@ def calcular_custos(
     quantidade_lote=1,
     filamentos_lote=None
 ):
-    quantidade = int(quantidade_lote) if quantidade_lote else 1
-    if quantidade <= 0:
-        quantidade = 1
-
-    tempo_pos_h = (tempo_pos_processamento_min if tempo_pos_processamento_min else 0) / 60
-    tempo_total_h = (tempo_impressao_h if tempo_impressao_h else 0) + tempo_pos_h
-
-    if filamentos_lote:
-        peso_g = sum(f[2] if f[2] else 0 for f in filamentos_lote)
-        custo_material = sum((f[1] if f[1] else 0) * (f[2] if f[2] else 0) for f in filamentos_lote)
-    else:
-        custo_material = peso_g * custo_grama
-
-    custo_energia = tempo_impressao_h * energia_hora
-    custo_depreciacao = tempo_impressao_h * depreciacao_hora
-    custo_pos_processamento = tempo_pos_h * custo_pos_processamento_hora
-    custo_acessorios = sum(valor * qtd for _, valor, qtd in acessorios_selecionados)
-
-    custo_total_lote = (
-        custo_material
-        + custo_energia
-        + custo_depreciacao
-        + custo_pos_processamento
-        + embalagem_custo
-        + custo_acessorios
+    return calcular_custos_peca(
+        peso_g=peso_g,
+        tempo_impressao_h=tempo_impressao_h,
+        tempo_pos_processamento_min=tempo_pos_processamento_min,
+        embalagem_custo=embalagem_custo,
+        custo_grama=custo_grama,
+        acessorios_selecionados=acessorios_selecionados,
+        energia_hora=energia_hora,
+        depreciacao_hora=depreciacao_hora,
+        custo_pos_processamento_hora=custo_pos_processamento_hora,
+        margem_padrao=margem_padrao,
+        meta_lucro_hora=meta_lucro_hora,
+        quantidade_lote=quantidade_lote,
+        filamentos_lote=filamentos_lote,
     )
-
-    preco_sugerido_lote = custo_total_lote * (1 + margem_padrao / 100)
-    lucro_lote = preco_sugerido_lote - custo_total_lote
-
-    custo_unitario = custo_total_lote / quantidade
-    preco_unitario = preco_sugerido_lote / quantidade
-    lucro_unitario = lucro_lote / quantidade
-    peso_unitario = peso_g / quantidade
-    tempo_unitario = tempo_total_h / quantidade if quantidade > 0 else 0
-
-    lucro_percentual = (lucro_lote / custo_total_lote) * 100 if custo_total_lote > 0 else 0
-    lucro_hora = lucro_lote / tempo_total_h if tempo_total_h > 0 else 0
-
-    if lucro_hora >= meta_lucro_hora:
-        status = "Recomendado"
-        cor = "green"
-    elif lucro_hora >= meta_lucro_hora * 0.6:
-        status = "Atenção"
-        cor = "orange"
-    else:
-        status = "Baixa rentabilidade"
-        cor = "red"
-
-    return {
-        "quantidade": quantidade,
-        "material": custo_material,
-        "energia": custo_energia,
-        "depreciacao": custo_depreciacao,
-        "pos_processamento": custo_pos_processamento,
-        "tempo_pos_h": tempo_pos_h,
-        "tempo_total_h": tempo_total_h,
-        "acessorios": custo_acessorios,
-        "embalagem": embalagem_custo,
-        "total": custo_total_lote,
-        "preco": preco_sugerido_lote,
-        "lucro": lucro_lote,
-        "lucro_percentual": lucro_percentual,
-        "lucro_hora": lucro_hora,
-        "custo_unitario": custo_unitario,
-        "preco_unitario": preco_unitario,
-        "lucro_unitario": lucro_unitario,
-        "peso_unitario": peso_unitario,
-        "tempo_unitario": tempo_unitario,
-        "status": status,
-        "cor": cor
-    }
-
 
 def duplicar_peca(peca_id):
     conn = conectar()

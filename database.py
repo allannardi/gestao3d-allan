@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v14_08_corrige_imports_auxiliares_pedidos"
+SCHEMA_VERSION = "v14_09_service_filamentos_pedido"
 
 
 def _get_secret(section, key, default=None):

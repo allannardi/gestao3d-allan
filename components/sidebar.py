@@ -1,6 +1,6 @@
 import streamlit as st
 
-APP_VERSION = "0.14.09"
+APP_VERSION = "0.14.26"
 
 
 def sidebar_section(titulo):

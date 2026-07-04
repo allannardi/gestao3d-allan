@@ -421,6 +421,23 @@ except ImportError:
         return [tuple(f) for f in filamentos]
 
 
+
+try:
+    from services.pedido_custos import (
+        calcular_custo_unitario_peca as _svc_calcular_custo_unitario_peca,
+        calcular_custos_pecas_lote as _svc_calcular_custos_pecas_lote,
+        calcular_pedido as _svc_calcular_pedido,
+        carregar_custos_pedidos_cache as _svc_carregar_custos_pedidos_cache,
+        carregar_pedidos_resumo_cache as _svc_carregar_pedidos_resumo_cache,
+    )
+except ImportError:
+    _svc_calcular_custo_unitario_peca = None
+    _svc_calcular_custos_pecas_lote = None
+    _svc_calcular_pedido = None
+    _svc_carregar_custos_pedidos_cache = None
+    _svc_carregar_pedidos_resumo_cache = None
+
+
 def limpar_cache_dados():
     """
     Limpa cache de dados após gravações.
@@ -615,6 +632,14 @@ def carregar_filamentos_da_peca(conn, peca_id):
 
 
 def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
+    if _svc_calcular_custo_unitario_peca is not None:
+        return _svc_calcular_custo_unitario_peca(
+            peca_id,
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
+
     conn = conectar()
 
     peca = conn.execute("""
@@ -677,6 +702,15 @@ def calcular_custo_unitario_peca(peca_id, energia_hora, depreciacao_hora, custo_
     }
 
 def calcular_custos_pecas_lote(conn, peca_ids, energia_hora, depreciacao_hora, custo_pos_processamento_hora=0):
+    if _svc_calcular_custos_pecas_lote is not None:
+        return _svc_calcular_custos_pecas_lote(
+            conn,
+            peca_ids,
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
+
     """
     Calcula custos de várias peças em lote.
 
@@ -784,6 +818,19 @@ def calcular_custos_pecas_lote(conn, peca_ids, energia_hora, depreciacao_hora, c
 
 
 def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energia_hora, depreciacao_hora, custo_peca=None, custo_pos_processamento_hora=0):
+    if _svc_calcular_pedido is not None:
+        return _svc_calcular_pedido(
+            peca_id,
+            quantidade,
+            valor_unitario,
+            desconto,
+            frete,
+            energia_hora,
+            depreciacao_hora,
+            custo_peca,
+            custo_pos_processamento_hora,
+        )
+
     if custo_peca is None:
         custo_peca = calcular_custo_unitario_peca(
             peca_id,
@@ -802,6 +849,13 @@ def calcular_pedido(peca_id, quantidade, valor_unitario, desconto, frete, energi
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_pedidos_resumo_cache(energia_hora, depreciacao_hora, custo_pos_processamento_hora):
+    if _svc_carregar_pedidos_resumo_cache is not None:
+        return _svc_carregar_pedidos_resumo_cache(
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
+
     """
     Carrega e calcula o resumo de pedidos com cache curto.
 
@@ -877,6 +931,14 @@ def carregar_pedidos_resumo_cache(energia_hora, depreciacao_hora, custo_pos_proc
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_custos_pedidos_cache(peca_ids, energia_hora, depreciacao_hora, custo_pos_processamento_hora):
+    if _svc_carregar_custos_pedidos_cache is not None:
+        return _svc_carregar_custos_pedidos_cache(
+            peca_ids,
+            energia_hora,
+            depreciacao_hora,
+            custo_pos_processamento_hora,
+        )
+
     """
     Calcula custos das peças usadas nos pedidos com cache curto.
     """
@@ -2876,6 +2938,16 @@ if termo_busca:
         or termo_busca in str(p[13] or "").lower()
     ]
 
+pedidos = paginar_itens(
+    pedidos,
+    "pedidos",
+    opcoes=(10, 25, 50, 100),
+    nome_item="pedidos"
+)
+
+# Performance:
+# A partir daqui calculamos custos apenas dos pedidos visíveis na página atual.
+# Antes, o sistema calculava custos de todos os pedidos filtrados antes da paginação.
 custos_pecas_pedidos = {}
 
 for pedido_custo in pedidos:
@@ -2898,13 +2970,6 @@ for pedido_custo in pedidos:
             depreciacao_pedido_custo,
             custo_pos_processamento_hora
         ).get(peca_id_custo)
-
-pedidos = paginar_itens(
-    pedidos,
-    "pedidos",
-    opcoes=(10, 25, 50, 100),
-    nome_item="pedidos"
-)
 
 
 for pedido in pedidos:

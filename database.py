@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v14_09_service_filamentos_pedido"
+SCHEMA_VERSION = "v14_26_dashboard_mobile_graficos_completos"
 
 
 def _get_secret(section, key, default=None):

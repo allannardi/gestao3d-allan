@@ -3,7 +3,7 @@ Ajustes pontuais de administração do Gestão 3D.
 
 Este módulo concentra ações de manutenção que hoje ficam na seção
 Configurações > Ajustes de Admin.
-No futuro, essas funções devem ser chamadas apenas por usuários com perfil Admin.
+No futuro, essas funções devem ser chamadas apenas por usuários com perfil Admin da Empresa.
 """
 
 from database import conectar

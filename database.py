@@ -3,8 +3,9 @@ import sqlite3
 from pathlib import Path
 
 
-LOCAL_DB_PATH = "database/atelie.db"
-SCHEMA_VERSION = "v14_26_dashboard_mobile_graficos_completos"
+DEFAULT_LOCAL_DB_PATH = "database/atelie.db"
+LOCAL_DB_PATH = DEFAULT_LOCAL_DB_PATH  # compatibilidade com imports antigos
+SCHEMA_VERSION = "v15_18_gerador_base_local_empresa"
 
 
 def _get_secret(section, key, default=None):
@@ -24,6 +25,33 @@ def _get_secret(section, key, default=None):
 
     env_key = f"{section}_{key}".upper()
     return os.getenv(env_key, default)
+
+
+def obter_caminho_banco_local():
+    """Retorna o caminho do SQLite local da empresa atual.
+
+    Para o modelo "uma empresa = um banco separado", cada ambiente pode apontar
+    para um arquivo SQLite diferente usando secrets ou variáveis de ambiente.
+
+    Ordem de prioridade:
+        1. [database].local_path no secrets.toml
+        2. [database].path no secrets.toml
+        3. GESTAO3D_LOCAL_DB_PATH
+        4. DATABASE_PATH
+        5. SQLITE_DB_PATH
+        6. database/atelie.db
+    """
+    caminho = (
+        _get_secret("database", "local_path", None)
+        or _get_secret("database", "path", None)
+        or os.getenv("GESTAO3D_LOCAL_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+        or os.getenv("SQLITE_DB_PATH")
+        or DEFAULT_LOCAL_DB_PATH
+    )
+
+    caminho = str(caminho or DEFAULT_LOCAL_DB_PATH).strip().strip('"').strip("'")
+    return caminho or DEFAULT_LOCAL_DB_PATH
 
 
 def _usar_turso():
@@ -128,10 +156,13 @@ def conectar():
     if usar_turso:
         return _conectar_turso(url, token)
 
-    Path("database").mkdir(exist_ok=True)
+    caminho_local = obter_caminho_banco_local()
+    caminho_path = Path(caminho_local)
+    if caminho_path.parent and str(caminho_path.parent) not in ["", "."]:
+        caminho_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(
-        LOCAL_DB_PATH,
+        str(caminho_path),
         check_same_thread=False
     )
 
@@ -158,7 +189,17 @@ def criar_banco():
         margem_padrao REAL,
         meta_lucro_hora REAL,
         custo_pos_processamento_hora REAL DEFAULT 0,
-        valor_kwh REAL DEFAULT 0.65
+        valor_kwh REAL DEFAULT 0.65,
+        nome_empresa TEXT DEFAULT 'Minha empresa',
+        login_admin_empresa TEXT DEFAULT '',
+        responsavel_empresa TEXT DEFAULT '',
+        telefone_whatsapp_empresa TEXT DEFAULT '',
+        cidade_uf_empresa TEXT DEFAULT '',
+        observacoes_internas_empresa TEXT DEFAULT '',
+        status_implantacao TEXT DEFAULT 'Em implantação',
+        base_empresa_id TEXT DEFAULT '',
+        codigo_empresa TEXT DEFAULT '',
+        ambiente_base TEXT DEFAULT 'Operação'
     )
     """)
 
@@ -314,6 +355,19 @@ def criar_banco():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        senha_hash TEXT NOT NULL,
+        perfil TEXT DEFAULT 'Operador',
+        status TEXT DEFAULT 'Ativo',
+        data_criacao TEXT,
+        ultimo_login TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -386,89 +440,43 @@ def calcular_energia_hora_impressora(consumo_w, valor_kwh):
     return (consumo_w / 1000) * valor_kwh
 
 
-def inserir_impressora_padrao():
-    """
-    Garante que projetos novos ou bancos antigos tenham pelo menos uma impressora.
 
-    A primeira impressora cadastrada é marcada como padrão.
-    Para bancos existentes, a impressora inicial preserva os valores atuais de energia/depreciação.
-    """
+def criar_tabela_usuarios():
     conn = conectar()
-
     conn.execute("""
-    CREATE TABLE IF NOT EXISTS impressoras (
+    CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        codigo TEXT UNIQUE,
-        marca TEXT,
-        modelo TEXT,
-        status TEXT DEFAULT 'Ativa',
-        consumo_w REAL DEFAULT 200,
-        valor_kwh REAL DEFAULT 0.65,
-        energia_hora REAL DEFAULT 0,
-        depreciacao_hora REAL DEFAULT 0.75,
-        observacoes TEXT,
-        is_padrao INTEGER DEFAULT 0,
-        data_cadastro TEXT
+        nome TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        senha_hash TEXT NOT NULL,
+        perfil TEXT DEFAULT 'Operador',
+        status TEXT DEFAULT 'Ativo',
+        data_criacao TEXT,
+        ultimo_login TEXT
     )
     """)
-
-    total = conn.execute("SELECT COUNT(*) FROM impressoras").fetchone()[0]
-
-    if total == 0:
-        config = conn.execute("""
-        SELECT
-            COALESCE(energia_hora, 0.15),
-            COALESCE(depreciacao_hora, 0.75)
-        FROM configuracoes
-        LIMIT 1
-        """).fetchone()
-
-        energia_atual = config[0] if config else 0.15
-        depreciacao_atual = config[1] if config else 0.75
-        valor_kwh = 0.65
-        consumo_w = (energia_atual / valor_kwh) * 1000 if valor_kwh > 0 and energia_atual > 0 else 200
-        energia_hora = calcular_energia_hora_impressora(consumo_w, valor_kwh)
-
-        conn.execute("""
-        INSERT INTO impressoras
-        (
-            codigo,
-            marca,
-            modelo,
-            status,
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_hora,
-            observacoes,
-            is_padrao,
-            data_cadastro
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE('now'))
-        """,
-        (
-            "IMP-001",
-            "Bambu Lab",
-            "A1 Mini",
-            "Ativa",
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_atual,
-            "Impressora padrão criada automaticamente a partir das configurações existentes.",
-            1
-        ))
-
     conn.commit()
     conn.close()
 
+
 def garantir_migracoes():
     criar_tabela_impressoras()
+    criar_tabela_usuarios()
     garantir_coluna("pecas", "quantidade_lote", "REAL DEFAULT 1")
     garantir_coluna("filamentos", "status", "TEXT DEFAULT 'Ativo'")
     garantir_coluna("filamentos", "data_finalizacao", "TEXT")
     garantir_coluna("configuracoes", "custo_pos_processamento_hora", "REAL DEFAULT 0")
     garantir_coluna("configuracoes", "valor_kwh", "REAL DEFAULT 0.65")
+    garantir_coluna("configuracoes", "nome_empresa", "TEXT DEFAULT 'Minha empresa'")
+    garantir_coluna("configuracoes", "login_admin_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "responsavel_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "telefone_whatsapp_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "cidade_uf_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "observacoes_internas_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "status_implantacao", "TEXT DEFAULT 'Em implantação'")
+    garantir_coluna("configuracoes", "base_empresa_id", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "codigo_empresa", "TEXT DEFAULT ''")
+    garantir_coluna("configuracoes", "ambiente_base", "TEXT DEFAULT 'Operação'")
     garantir_coluna("pedido_filamentos", "peso_g", "REAL DEFAULT 0")
     garantir_coluna("pedidos", "impressora_id", "INTEGER")
     garantir_coluna("pedidos", "data_final_producao", "TEXT")
@@ -494,6 +502,18 @@ def garantir_migracoes():
         password_hash TEXT,
         password_salt TEXT,
         updated_at TEXT
+    )
+    """)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        senha_hash TEXT NOT NULL,
+        perfil TEXT DEFAULT 'Operador',
+        status TEXT DEFAULT 'Ativo',
+        data_criacao TEXT,
+        ultimo_login TEXT
     )
     """)
     conn.commit()
@@ -537,20 +557,53 @@ def inserir_configuracao_padrao():
             margem_padrao,
             meta_lucro_hora,
             custo_pos_processamento_hora,
-            valor_kwh
+            valor_kwh,
+            nome_empresa,
+            login_admin_empresa,
+            responsavel_empresa,
+            telefone_whatsapp_empresa,
+            cidade_uf_empresa,
+            observacoes_internas_empresa,
+            status_implantacao,
+            base_empresa_id,
+            codigo_empresa,
+            ambiente_base
         )
-        VALUES (0.15, 0.75, 150, 5, 0, 0.65)
+        VALUES (0.15, 0.75, 150, 5, 0, 0.65, 'Minha empresa', 'admin', '', '', '', '', 'Em implantação', '', '', 'Operação')
         """)
 
     conn.commit()
     conn.close()
 
 
+
+def obter_info_banco_atual():
+    """Retorna informações seguras sobre a base atualmente conectada."""
+    usar_turso, url, token = _usar_turso()
+
+    if usar_turso:
+        modo = "Turso/libSQL"
+        banco = url or "Não informado"
+        origem = "cloud"
+    else:
+        modo = "SQLite local"
+        banco = obter_caminho_banco_local()
+        origem = "local"
+
+    return {
+        "modo": modo,
+        "origem": origem,
+        "banco": banco,
+        "schema_version": SCHEMA_VERSION,
+        "tem_token": bool(token),
+        "local_path_configuravel": not usar_turso,
+    }
+
 def _chave_banco_atual():
     usar_turso, url, _ = _usar_turso()
     if usar_turso:
         return f"turso::{url}::{SCHEMA_VERSION}"
-    return f"local::{LOCAL_DB_PATH}::{SCHEMA_VERSION}"
+    return f"local::{obter_caminho_banco_local()}::{SCHEMA_VERSION}"
 
 
 def inicializar_banco(force=False):
@@ -575,7 +628,8 @@ def inicializar_banco(force=False):
         criar_banco()
         garantir_migracoes()
         inserir_configuracao_padrao()
-        inserir_impressora_padrao()
+        # v15.18: não criar nenhum dado operacional automaticamente em bases novas.
+        # A primeira impressora, o primeiro filamento e a primeira peça devem ser cadastrados pela trilha inicial.
         inserir_categorias_pecas_padrao()
 
         st.session_state["_g3d_banco_inicializado"] = True
@@ -586,3 +640,5 @@ def inicializar_banco(force=False):
         criar_banco()
         garantir_migracoes()
         inserir_configuracao_padrao()
+        # v15.18: não criar nenhum dado operacional automaticamente em bases novas.
+        inserir_categorias_pecas_padrao()

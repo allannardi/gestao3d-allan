@@ -9,7 +9,7 @@ from components.header import header
 from components.help_ui import header_with_help
 from components.kpi import kpi_card
 from components.section import section_title, small_section
-from components.auth import require_login, alterar_senha_app, usuario_auth_atual, senha_personalizada_ativa
+from components.auth import require_login, alterar_senha_app, usuario_auth_atual, senha_personalizada_ativa, get_usuario_atual, label_perfil
 from database import conectar, inicializar_banco
 from services.impressoras import (
     PRESETS_IMPRESSORAS,
@@ -20,12 +20,6 @@ from services.impressoras import (
     garantir_impressoras_configuracoes,
     gerar_codigo_impressora,
     sincronizar_configuracao_com_impressora_padrao,
-)
-from services.admin_ajustes import (
-    aplicar_entrega_prevista_nas_datas_antigas,
-    aplicar_impressora_padrao_pedidos_antigos,
-    contar_pedidos_para_ajuste_datas_previstas,
-    contar_pedidos_sem_impressora,
 )
 
 
@@ -109,8 +103,6 @@ valor_kwh_geral = config[5] if len(config) > 5 else 0.65
 
 impressoras = carregar_impressoras()
 impressora_padrao = carregar_impressora_padrao()
-pedidos_sem_impressora = contar_pedidos_sem_impressora()
-resumo_ajuste_datas = contar_pedidos_para_ajuste_datas_previstas()
 total_impressoras = len(impressoras)
 impressoras_ativas = len([i for i in impressoras if (i[4] or "Ativa") == "Ativa"])
 
@@ -547,127 +539,6 @@ if st.session_state["mostrar_form_impressora"]:
 
 
 section_title(
-    "Ajustes de Admin",
-    "Ações pontuais e correções em lote para manutenção do sistema"
-)
-
-
-with st.container(border=True):
-
-    small_section("Ajuste em lote")
-
-    if impressora_padrao:
-        impressora_padrao_label = f"{impressora_padrao[1]} - {impressora_padrao[2]} {impressora_padrao[3]}"
-
-        col_lote1, col_lote2 = st.columns([2, 1])
-
-        with col_lote1:
-            st.markdown(
-                f"""
-                **Pedidos sem impressora:** {pedidos_sem_impressora}  
-                **Impressora padrão atual:** {impressora_padrao_label}
-                """
-            )
-            st.caption(
-                "Use esta opção para preencher automaticamente a impressora padrão nos pedidos antigos que ainda estão sem impressora."
-            )
-
-        with col_lote2:
-            kpi_card("Pendentes", str(pedidos_sem_impressora), "sem impressora", "orange" if pedidos_sem_impressora > 0 else "green")
-
-        if pedidos_sem_impressora > 0:
-            confirmar_lote = st.checkbox(
-                "Confirmo que desejo aplicar a impressora padrão aos pedidos antigos sem impressora.",
-                key="confirmar_lote_impressora_padrao"
-            )
-
-            if st.button(
-                "Aplicar impressora padrão aos pedidos antigos",
-                key="aplicar_impressora_padrao_lote",
-                disabled=not confirmar_lote,
-                use_container_width=True
-            ):
-                quantidade_atualizada = aplicar_impressora_padrao_pedidos_antigos(impressora_padrao[0])
-
-                try:
-                    st.cache_data.clear()
-                except Exception:
-                    pass
-
-                st.success(
-                    f"Impressora padrão aplicada em {quantidade_atualizada} pedidos antigos."
-                )
-                st.rerun()
-        else:
-            st.success("Todos os pedidos já possuem impressora vinculada.")
-    else:
-        st.warning("Cadastre ou defina uma impressora padrão antes de aplicar em lote.")
-
-
-
-with st.container(border=True):
-
-    small_section("Ajuste pontual de datas dos pedidos antigos")
-
-    col_datas1, col_datas2, col_datas3 = st.columns(3)
-
-    with col_datas1:
-        kpi_card(
-            "Pedidos elegíveis",
-            str(resumo_ajuste_datas["total"]),
-            "com entrega prevista",
-            "orange" if resumo_ajuste_datas["total"] > 0 else "green"
-        )
-
-    with col_datas2:
-        kpi_card(
-            "Sem Data Final Produção",
-            str(resumo_ajuste_datas["sem_data_final"]),
-            "será preenchida",
-            "orange" if resumo_ajuste_datas["sem_data_final"] > 0 else "green"
-        )
-
-    with col_datas3:
-        kpi_card(
-            "Sem Data da Entrega",
-            str(resumo_ajuste_datas["sem_data_entrega"]),
-            "será preenchida",
-            "orange" if resumo_ajuste_datas["sem_data_entrega"] > 0 else "green"
-        )
-
-    st.caption(
-        "Esta ação pontual preenche Data Final Produção e Data da Entrega usando a Entrega Prevista dos pedidos antigos. "
-        "Datas que já foram preenchidas manualmente não são alteradas."
-    )
-
-    if resumo_ajuste_datas["total"] > 0:
-        confirmar_datas_antigas = st.checkbox(
-            "Confirmo que desejo preencher as datas vazias dos pedidos antigos com a Entrega Prevista.",
-            key="confirmar_ajuste_datas_pedidos_antigos"
-        )
-
-        if st.button(
-            "Preencher datas dos pedidos antigos",
-            key="preencher_datas_pedidos_antigos",
-            disabled=not confirmar_datas_antigas,
-            use_container_width=True
-        ):
-            quantidade_atualizada = aplicar_entrega_prevista_nas_datas_antigas()
-
-            try:
-                st.cache_data.clear()
-            except Exception:
-                pass
-
-            st.success(
-                f"Datas preenchidas em {quantidade_atualizada} pedidos antigos."
-            )
-            st.rerun()
-    else:
-        st.success("Não há pedidos antigos pendentes para este ajuste.")
-
-
-section_title(
     "Acesso e senha",
     "Troque a senha usada para entrar no sistema"
 )
@@ -678,16 +549,24 @@ with st.container(border=True):
     small_section("Trocar senha")
 
     usuario_login = usuario_auth_atual()
+    usuario_atual = get_usuario_atual() or {}
+    usuario_nome = usuario_atual.get("nome") or usuario_login
+    usuario_perfil = label_perfil(usuario_atual.get("perfil") or "")
+
+    if usuario_perfil:
+        st.markdown(f"**Conta atual:** {usuario_nome}  \n**Login:** {usuario_login}  \n**Perfil:** {usuario_perfil}")
+    else:
+        st.markdown(f"**Conta atual:** {usuario_nome}  \n**Login:** {usuario_login}")
 
     if senha_personalizada_ativa():
-        st.caption("Senha personalizada ativa. A troca fica salva no banco atual do sistema.")
+        st.caption("A troca altera somente a senha do usuário logado na base atual do sistema.")
     else:
-        st.caption("Ainda usando a senha inicial do secrets. Ao trocar, a nova senha ficará salva no banco atual.")
+        st.caption("Ainda usando a senha inicial do sistema. Ao trocar, a nova senha ficará salva no banco atual.")
 
     with st.form("trocar_senha_acesso"):
 
         usuario_exibicao = st.text_input(
-            "Usuário",
+            "Usuário/Login",
             value=usuario_login,
             disabled=True
         )

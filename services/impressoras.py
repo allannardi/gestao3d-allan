@@ -76,8 +76,10 @@ def garantir_impressoras_configuracoes():
     """
     Garante a tabela de impressoras diretamente na tela Configurações.
 
-    Isto evita erro caso o Streamlit ainda esteja com cache/sessão antiga
-    ou caso database.py não tenha executado a migração antes da página carregar.
+    Desde a v15.14, esta função NÃO cria impressora automaticamente.
+    Em uma base nova, a primeira impressora deve ser cadastrada pelo
+    Admin da Empresa durante a trilha inicial. Isso evita que uma nova
+    empresa comece com uma impressora fictícia ou herdada do projeto original.
     """
     conn = conectar()
 
@@ -97,66 +99,6 @@ def garantir_impressoras_configuracoes():
         data_cadastro TEXT
     )
     """)
-
-    total = conn.execute("SELECT COUNT(*) FROM impressoras").fetchone()[0]
-
-    if total == 0:
-        config_atual = conn.execute("""
-        SELECT
-            COALESCE(energia_hora, 0.15),
-            COALESCE(depreciacao_hora, 0.75),
-            COALESCE(valor_kwh, 0.65)
-        FROM configuracoes
-        LIMIT 1
-        """).fetchone()
-
-        energia_atual = config_atual[0] if config_atual else 0.15
-        depreciacao_atual = config_atual[1] if config_atual else 0.75
-        valor_kwh = config_atual[2] if config_atual else 0.65
-        consumo_w = (energia_atual / valor_kwh) * 1000 if valor_kwh > 0 and energia_atual > 0 else 200
-        energia_hora = calcular_energia_hora(consumo_w, valor_kwh)
-
-        conn.execute("""
-        INSERT INTO impressoras
-        (
-            codigo,
-            marca,
-            modelo,
-            status,
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_hora,
-            observacoes,
-            is_padrao,
-            data_cadastro
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            "IMP-001",
-            "Bambu Lab",
-            "A1 Mini",
-            "Ativa",
-            consumo_w,
-            valor_kwh,
-            energia_hora,
-            depreciacao_atual,
-            "Impressora padrão criada automaticamente a partir das configurações existentes.",
-            1,
-            str(date.today())
-        ))
-
-        conn.execute("""
-        UPDATE configuracoes
-        SET
-            energia_hora = ?,
-            depreciacao_hora = ?
-        """,
-        (
-            energia_hora,
-            depreciacao_atual,
-        ))
 
     conn.commit()
     conn.close()

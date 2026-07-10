@@ -1,6 +1,11 @@
 import streamlit as st
+from html import escape
 
-APP_VERSION = "0.14.26"
+from components.auth import get_usuario_atual, label_perfil, logout_button, tem_permissao
+from services.empresa import obter_nome_empresa
+
+
+APP_VERSION = "0.15.18"
 
 
 def sidebar_section(titulo):
@@ -103,6 +108,17 @@ def sidebar():
                         text-align: center;
                     }
 
+                    .g3d-sidebar-company {
+                        margin-top: 0.28rem;
+                        font-family: 'Barlow', system-ui, sans-serif;
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: #5C6C74;
+                        line-height: 1.20;
+                        text-align: center;
+                        word-break: break-word;
+                    }
+
                     .g3d-sidebar-section {
                         display: flex;
                         align-items: center;
@@ -176,6 +192,49 @@ def sidebar():
                         color: #0A1A5C;
                         font-weight: 800;
                     }
+
+                    .g3d-sidebar-user {
+                        margin-top: 0.55rem;
+                        margin-bottom: 0.45rem;
+                        padding: 0.52rem 0.62rem;
+                        border-radius: 12px;
+                        background: #F8FBFD;
+                        border: 1px solid rgba(222, 233, 239, 0.95);
+                        font-family: 'Barlow', system-ui, sans-serif;
+                        color: #5C6C74;
+                        font-size: 11px;
+                        line-height: 1.25;
+                    }
+
+                    .g3d-sidebar-user strong {
+                        display: block;
+                        color: #0A1A5C;
+                        font-size: 12px;
+                        font-weight: 800;
+                        margin-bottom: 2px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+
+                    .st-key-sidebar_logout button {
+                        min-height: 30px !important;
+                        height: 30px !important;
+                        padding: 0 12px !important;
+                        border-radius: 10px !important;
+                        font-family: 'Barlow', system-ui, sans-serif !important;
+                        font-size: 12px !important;
+                        font-weight: 800 !important;
+                        background: #FFFFFF !important;
+                        color: #0C65AA !important;
+                        border: 1px solid #B9CDDC !important;
+                    }
+
+                    .st-key-sidebar_logout button:hover {
+                        background: #EDF5FA !important;
+                        color: #0A1A5C !important;
+                        border-color: #0C65AA !important;
+                    }
                 }
             </style>
             """,
@@ -188,7 +247,11 @@ def sidebar():
             st.markdown('<div class="g3d-sidebar-logo-box">', unsafe_allow_html=True)
             st.image("assets/logo.png", width=84)
             st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('<div class="g3d-sidebar-title">Gestão 3D</div></div>', unsafe_allow_html=True)
+        nome_empresa = escape(obter_nome_empresa())
+        st.markdown(
+            f'<div class="g3d-sidebar-title">Gestão 3D</div><div class="g3d-sidebar-company">{nome_empresa}</div></div>',
+            unsafe_allow_html=True,
+        )
 
         sidebar_section("Geral")
         sidebar_link("Dashboard.py", "Início")
@@ -202,6 +265,10 @@ def sidebar():
 
         sidebar_section("Sistema")
         sidebar_link("pages/Configuracoes.py", "Configurações")
+        if tem_permissao("ver_ajustes_admin"):
+            sidebar_link("pages/Administrador.py", "Administrador")
+        if tem_permissao("gerenciar_usuarios"):
+            sidebar_link("pages/Usuarios.py", "Usuários")
 
         st.markdown(
             f"""
@@ -212,3 +279,19 @@ def sidebar():
             """,
             unsafe_allow_html=True,
         )
+
+        usuario = get_usuario_atual()
+        if usuario:
+            nome = escape(str(usuario.get("nome") or usuario.get("email") or "Usuário"))
+            perfil = escape(label_perfil(usuario.get("perfil") or "Operador"))
+            st.markdown(
+                f"""
+                <div class="g3d-sidebar-user">
+                    <strong>{nome}</strong>
+                    <span>{perfil}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        logout_button(label="Sair", key="sidebar_logout", use_container_width=True)

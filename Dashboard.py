@@ -10,6 +10,7 @@ from components.desktop_hero import render_desktop_hero
 from components.header import header
 from components.section import section_title
 from components.auth import require_login
+from components.onboarding import render_trilha_inicial
 from components.dashboard_widgets import (
     moeda,
     render_ranking_faturamento_visual,
@@ -394,6 +395,12 @@ header(
     "Início",
     "Visão geral da operação"
 )
+
+aviso_acesso = st.session_state.pop("aviso_acesso_restrito", None)
+if aviso_acesso:
+    st.warning(aviso_acesso)
+
+render_trilha_inicial(mostrar_quando_completo=False, prefixo_key="onboarding")
 
 meses_dashboard = _svc_listar_meses_pedidos_dashboard(pedidos)
 

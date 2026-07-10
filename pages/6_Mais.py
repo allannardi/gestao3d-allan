@@ -14,7 +14,7 @@ from components.desktop_visual import inject_desktop_visual
 from components.mobile_summary import mobile_summary_css
 from components.header import header
 from components.section import section_title
-from components.auth import require_login, logout_button
+from components.auth import require_login, logout_button, tem_permissao
 
 
 def card_atalho(titulo, subtitulo, destino, key):
@@ -32,7 +32,9 @@ def mais_css():
         <style>
             .st-key-mais_btn_filamentos button,
             .st-key-mais_btn_acessorios button,
-            .st-key-mais_btn_configuracoes button {
+            .st-key-mais_btn_configuracoes button,
+            .st-key-mais_btn_administrador button,
+            .st-key-mais_btn_usuarios button {
                 background: #FFFFFF !important;
                 color: #0C65AA !important;
                 border: 1px solid #B9CDDC !important;
@@ -43,7 +45,9 @@ def mais_css():
 
             .st-key-mais_btn_filamentos button:hover,
             .st-key-mais_btn_acessorios button:hover,
-            .st-key-mais_btn_configuracoes button:hover {
+            .st-key-mais_btn_configuracoes button:hover,
+            .st-key-mais_btn_administrador button:hover,
+            .st-key-mais_btn_usuarios button:hover {
                 background: #EDF5FA !important;
                 color: #0A1A5C !important;
                 border-color: #0C65AA !important;
@@ -139,6 +143,22 @@ with st.container(key="mais_cards"):
             "pages/Configuracoes.py",
             "mais_btn_configuracoes",
         )
+
+        if tem_permissao("ver_ajustes_admin"):
+            card_atalho(
+                "Administrador",
+                "Dados da empresa, implantação e ajustes administrativos.",
+                "pages/Administrador.py",
+                "mais_btn_administrador",
+            )
+
+        if tem_permissao("gerenciar_usuarios"):
+            card_atalho(
+                "Usuários",
+                "Criar acessos e gerenciar perfis.",
+                "pages/Usuarios.py",
+                "mais_btn_usuarios",
+            )
 
         with st.container(border=True, key="mais_sair"):
             st.markdown("**Sair**")
